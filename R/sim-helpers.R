@@ -298,7 +298,7 @@ run_mhp_replicate <- function(T_max, true_params, kernel = c("step", "pwlin"),
 #' @export
 run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin"), 
                                  mark_productivity = c("linear", "exponential"), K,
-                                 R = 20, n_chains = 2, n_iter = 4000,
+                                 R = 20, n_chains = 2, n_iter = 4000, n_burn=1000,
                                  base_seed = 1,
                                  prior_params = default_prior_params(),
                                  proposal_sds = default_proposal_sds(),
@@ -336,7 +336,10 @@ run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin")
     
     if (is.null(rep_out)) next
     
-    samples <- do.call(rbind, lapply(rep_out$fit$chains, function(ch) ch$samples))
+    samples <- do.call(
+      rbind, 
+      lapply(rep_out$fit$chains, function(ch) ch$samples[-(1:n_burn), ])
+    )
     
     est <- sapply(scalar_names, function(nm) {
       x <- samples[, nm]

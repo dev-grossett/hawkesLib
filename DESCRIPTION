@@ -1,9 +1,9 @@
-Package: hawkeslib
-Title: What the Package Does (One Line, Title Case)
+Package: hawkesLib
+Title: Hawkes process estimation using Dirichlet process priors
 Version: 0.0.0.9000
 Authors@R: 
     person("Devon", "Grossett", , "dev.grossett@gmail.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
+Description: Model marked Hawkes process data with non-parametric kernels defined by Dirichlet process priors.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

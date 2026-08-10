@@ -54,10 +54,9 @@ update_zs <- function(lambda0, A, beta = NULL, w, C, theta, times, marks,
   kernel <- match.arg(kernel)
   mark_productivity <- match.arg(mark_productivity)
 
-  stopifnot(
-    "Need 'beta' param when mark_productivity = 'exponential'" = 
-    mark_productivity == "exponential" & !is.null(beta)
-  )
+  if (mark_productivity == "exponential" && is.null(beta)) {
+    stop("Need 'beta' param when mark_productivity = 'exponential'")
+  }
   
   n <- length(times)
   z <- integer(n)
@@ -345,6 +344,7 @@ logpost_beta <- function(beta, A, marks, sum_M_off, mu_beta, sd_beta) {
 #'   }
 #'
 #' @keywords internal
+#' @export
 run_sampler <- function(times, marks, T_max, n_iter, init, prior_params, 
                         proposal_sds, kernel = c("step", "pwlin"), 
                         mark_productivity = c("linear", "exponential"), 
@@ -416,9 +416,13 @@ run_sampler <- function(times, marks, T_max, n_iter, init, prior_params,
   for (iter in 1:n_iter) {
     
     # resample latent parameters
-    zs <- update_zs(lambda0, A, 
-                    ifelse(mark_productivity == "linear", NULL, beta),
-                    w, C, theta, times, marks, kernel, mark_productivity)
+    if (mark_productivity == "linear") {
+      zs <- update_zs(lambda0, A, NULL, w, C, theta, times, marks, 
+                      kernel, mark_productivity)
+    } else {
+      zs <- update_zs(lambda0, A, beta, w, C, theta, times, marks, 
+                      kernel, mark_productivity)
+    }
     z <- zs$z
     s <- zs$s
     
@@ -447,13 +451,14 @@ run_sampler <- function(times, marks, T_max, n_iter, init, prior_params,
       rate = prior_params$b_l0 + T_max
     )
     
-    #A 
-    A <- rgamma(
-      1, 
-      shape = prior_params$a_A + n_off, 
-      rate = prior_params$b_A + 
-        ifelse(mark_productivity == "linear", sum(marks), sum(exp(beta * marks)))
-    )
+    # A 
+    if (mark_productivity == "linear") {
+      A_rate <- prior_params$b_A + sum(marks)
+    } else {
+      A_rate <- prior_params$b_A + sum(exp(beta * marks))
+    }
+    
+    A <- rgamma(1, shape = prior_params$a_A + n_off, rate = A_rate)
 
     # beta (mark-productivity slope; Metropolis, no transform needed since
     # beta is already on an unconstrained scale)
@@ -803,6 +808,7 @@ run_mcmc <- function(
 #' Default prior hyperparameters
 #'
 #' @keywords internal
+#' @export
 default_prior_params <- function() {
   list(
     a_l0 = 1,
@@ -823,6 +829,7 @@ default_prior_params <- function() {
 #' Default Metropolis proposal standard deviations
 #'
 #' @keywords internal
+#' @export
 default_proposal_sds <- function() {
   list(theta_k = 1, v_k = 1, beta = 0.2)
 }
