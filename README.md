@@ -18,5 +18,5 @@ processes, univariate Hawkes processes, and marked Hawkes processes.
 sampler functions to perform a simulation study, computing bias, RMSE, credible 
 interval coverage, and plotting 'true' kernels against posterior estimates
 - `plot-utils.R` contains some functions to generate commonly used plots
--`exp-hp-mle.R` contains functions to perform MLE for univariate Hawkes process
+- `exp-hp-mle.R` contains functions to perform MLE for univariate Hawkes process
 models with a parametric exponential kernel.
