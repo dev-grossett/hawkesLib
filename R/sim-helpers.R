@@ -334,7 +334,7 @@ run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin")
       }
     )
     
-    if !is.null(n_burn) {
+    if (!is.null(n_burn)) {
       # drop first n_burn samples if provided a non null value
       for (j in seq_along(rep_out$fit$chains)) {
         rep_out$fit$chains[[j]]$samples <-
