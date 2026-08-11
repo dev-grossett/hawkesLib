@@ -298,11 +298,11 @@ run_mhp_replicate <- function(T_max, true_params, kernel = c("step", "pwlin"),
 #' @export
 run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin"), 
                                  mark_productivity = c("linear", "exponential"), K,
-                                 R = 20, n_chains = 2, n_iter = 4000, n_burn=1000,
+                                 R = 20, n_chains = 2, n_iter = 4000, n_burn=NULL,
                                  base_seed = 1,
                                  prior_params = default_prior_params(),
                                  proposal_sds = default_proposal_sds(),
-                                 ci_level = 0.90, progress = FALSE, verbose = TRUE) {
+                                 ci_level = 0.95, progress = FALSE, verbose = TRUE) {
   
   kernel <- match.arg(kernel)
   mark_productivity = match.arg(mark_productivity)
@@ -334,11 +334,21 @@ run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin")
       }
     )
     
+    if !is.null(n_burn) {
+      # drop first n_burn samples if provided a non null value
+      for (j in seq_along(rep_out$fit$chains)) {
+        rep_out$fit$chains[[j]]$samples <-
+          rep_out$fit$chains[[j]]$samples[
+            (n_burn + 1):nrow(rep_out$fit$chains[[j]]$samples), , drop = FALSE
+          ]
+      }
+    }
+    
     if (is.null(rep_out)) next
     
     samples <- do.call(
       rbind, 
-      lapply(rep_out$fit$chains, function(ch) ch$samples[-(1:n_burn), ])
+      lapply(rep_out$fit$chains, function(ch) ch$samples)
     )
     
     est <- sapply(scalar_names, function(nm) {
