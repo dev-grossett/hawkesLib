@@ -1062,7 +1062,7 @@ plot_hawkes_kernel <- function(
     
     if (legend) {
       
-      legend_labels <- c("Mean", "95% Credible Interval")
+      legend_labels <- c("Mean", paste0(round(ci_level * 100), "% Credible Interval"))
       legend_col    <- c("black", "black")
       legend_lty    <- c(1, 2)
       legend_lwd    <- c(2, 1)
