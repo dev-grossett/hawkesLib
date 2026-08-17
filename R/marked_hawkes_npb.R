@@ -917,6 +917,7 @@ unscale_chain <- function(chain, time_scale) {
 #' @param panel Character; which panel(s) to draw: \code{"both"} (default),
 #'   \code{"summary"} (posterior mean + credible band only), or
 #'   \code{"spaghetti"} (individual draws only).
+#' @param legend Boolean; Display legend
 #' @param seed Optional integer seed for the spaghetti-panel subsampling, for
 #'   reproducible figures. Default \code{NULL} (no seed set).
 #'
@@ -960,6 +961,7 @@ plot_hawkes_kernel <- function(
   n_spaghetti = 500,
   true_kernel = NULL,
   panel = c("both", "summary", "spaghetti"),
+  legend = TRUE,
   seed = NULL
 ) {
   kernel <- match.arg(kernel)
@@ -1036,9 +1038,19 @@ plot_hawkes_kernel <- function(
     on.exit(par(old_par), add = TRUE)
   }
   
+  if (!is.null(true_kernel)) {
+    y_lim <- range(
+      min(kernel_lower, true_kernel(x_grid)), 
+      max(kernel_upper, true_kernel(x_grid))
+    )
+  } else {
+    y_lim <- range(kernel_lower, kernel_upper)
+  }
+  
   if (panel %in% c("both", "summary")) {
+    
     plot(x_grid, kernel_mean, type = "l", lwd = 2,
-         ylim = range(kernel_lower, kernel_upper),
+         ylim = y_lim,
          xlab = "x", ylab = "f(x)",
          main = paste0("Posterior kernel (", kernel, "), ",
                        round(ci_level * 100), "% CI"))
@@ -1047,18 +1059,67 @@ plot_hawkes_kernel <- function(
     if (!is.null(true_kernel)) {
       lines(x_grid, true_kernel(x_grid), lwd = 2, col = "red")
     }
+    
+    if (legend) {
+      
+      legend_labels <- c("Mean", "95% Credible Interval")
+      legend_col    <- c("black", "black")
+      legend_lty    <- c(1, 2)
+      legend_lwd    <- c(2, 1)
+      
+      if (!is.null(true_kernel)) {
+        legend_labels <- c(legend_labels, "Truth")
+        legend_col    <- c(legend_col, "red")
+        legend_lty    <- c(legend_lty, 1)
+        legend_lwd    <- c(legend_lwd, 2)
+      }
+      
+      legend(x = "topright", legend = legend_labels, col = legend_col,
+             lty = legend_lty, lwd = legend_lwd, bty = "n")
+    }
   }
   
   if (panel %in% c("both", "spaghetti")) {
     if (!is.null(seed)) set.seed(seed)
     n_show   <- min(n_spaghetti, n_draws)
     draw_idx <- sample.int(n_draws, n_show)
+    
+    if (!is.null(true_kernel)) {
+      y_lim <- range(
+        min(kernel_draws[draw_idx, ], true_kernel(x_grid)), 
+        max(kernel_draws[draw_idx, ], true_kernel(x_grid))
+      )
+    } else {
+      y_lim <- range(
+        min(kernel_draws[draw_idx, ]), 
+        max(kernel_draws[draw_idx, ])
+      )
+    }
+    
     matplot(x_grid, t(kernel_draws[draw_idx, , drop = FALSE]),
             type = "l", lty = 1, col = rgb(0, 0, 0, 0.1),
-            xlab = "x", ylab = "f(x)",
+            xlab = "x", ylab = "f(x)", ylim = y_lim,
             main = paste0("Posterior kernel draws (", kernel, ")"))
     if (!is.null(true_kernel)) {
       lines(x_grid, true_kernel(x_grid), lwd = 3, col = "red")
+    }
+    
+    if (legend) {
+      
+      legend_labels <- c("Posterior Draw")
+      legend_col    <- c(rgb(0, 0, 0, 0.1))
+      legend_lty    <- c(1)
+      legend_lwd    <- c(1)
+      
+      if (!is.null(true_kernel)) {
+        legend_labels <- c(legend_labels, "Truth")
+        legend_col    <- c(legend_col, "red")
+        legend_lty    <- c(legend_lty, 1)
+        legend_lwd    <- c(legend_lwd, 3)
+      }
+      
+      legend(x = "topright", legend = legend_labels, col = legend_col, 
+             lty = legend_lty, lwd = legend_lwd, bty = "n")
     }
   }
   

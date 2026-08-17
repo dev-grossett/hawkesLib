@@ -14,6 +14,7 @@ plot_hawkes_kernel(
   n_spaghetti = 500,
   true_kernel = NULL,
   panel = c("both", "summary", "spaghetti"),
+  legend = TRUE,
   seed = NULL
 )
 }
@@ -52,6 +53,8 @@ true kernel to overlay in red on the relevant panel(s), e.g.
 \item{panel}{Character; which panel(s) to draw: \code{"both"} (default),
 \code{"summary"} (posterior mean + credible band only), or
 \code{"spaghetti"} (individual draws only).}
+
+\item{legend}{Boolean; Display legend}
 
 \item{seed}{Optional integer seed for the spaghetti-panel subsampling, for
 reproducible figures. Default \code{NULL} (no seed set).}

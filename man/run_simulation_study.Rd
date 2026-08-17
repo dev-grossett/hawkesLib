@@ -13,10 +13,11 @@ run_simulation_study(
   R = 20,
   n_chains = 2,
   n_iter = 4000,
+  n_burn = NULL,
   base_seed = 1,
   prior_params = default_prior_params(),
   proposal_sds = default_proposal_sds(),
-  ci_level = 0.9,
+  ci_level = 0.95,
   progress = FALSE,
   verbose = TRUE
 )
