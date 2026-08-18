@@ -412,10 +412,13 @@ run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin")
 #' @param R Integer; number of individual replicate to diagnose.
 #' @param start Integer; first iteration of interest.
 #' @param thin Integer; the required interval between successive samples.
+#' @param params
+#' @param lags
 #' @param ... optional arguments to pass to MCMCvis::MCMCtrace
 #' 
 #' @export
-diagnose_sim_study <- function(study, R, start = 1, thin = 1, params = "all", ...) {
+diagnose_sim_study <- function(study, R, start = 1, thin = 1,
+                               params = "all", lags = NULL, ...) {
   
   # Extract the MCMC chains object
   chains <- study$results[[R]]$fit$chains
@@ -423,10 +426,93 @@ diagnose_sim_study <- function(study, R, start = 1, thin = 1, params = "all", ..
   mcmc_chains <- lapply(chains, function(chain) {
     coda::mcmc(chain$samples)
   })
-  mcmc_chains <- window(coda::mcmc.list(mcmc_chains), start = start, thin = thin)
-  # mcmc_chains <- window(mcmc_chains, start = start, thin = thin)
   
+  mcmc_chains <- window(
+    coda::mcmc.list(mcmc_chains),
+    start = start,
+    thin = thin
+  )
+  
+  # Standard parameter diagnostics
   MCMCvis::MCMCtrace(mcmc_chains, params = params, ...)
   
-  return(MCMCvis::MCMCsummary(mcmc_chains, round = 4, params = params))
+  summary <- MCMCvis::MCMCsummary(
+    mcmc_chains,
+    round = 4,
+    params = params
+  )
+  
+  # Compute Gelman-Rubin convergence statistics for the kernel values atspecified lags
+  if (!is.null(lags)) {
+    
+    kernel <- study$kernel
+    
+    kernel_chains <- lapply(mcmc_chains, function(chain) {
+      
+      samples <- as.matrix(chain)
+      
+      apply(samples, 1, function(s) {
+        
+        theta <- s[grep("^theta", names(s))]
+        v <- s[grep("^v", names(s))]
+        
+        # Stick-breaking weights
+        remaining <- cumprod(c(1, 1 - v))
+        w <- c(v, 1) * remaining
+        
+        # Kernel normalising constant
+        if (kernel == "step") {
+          C <- sum(w * theta)
+          basis <- outer(
+            lags,
+            theta,
+            function(x, th) as.numeric(x < th)
+          )
+        } else if (kernel == "pwlin") {
+          C <- 0.5 * sum(w * theta^2)
+          basis <- outer(
+            lags,
+            theta,
+            function(x, th) pmax(th - x, 0)
+          )
+        } else {
+          stop("Unknown kernel: ", kernel)
+        }
+        as.numeric(basis %*% w / C)
+      })
+    })
+    
+    # Convert each chain to an MCMC object
+    kernel_chains <- lapply(kernel_chains, function(x) {
+      x <- t(x)
+      colnames(x) <- paste0("f_", lags)
+      coda::mcmc(x)
+    })
+    
+    kernel_mcmc <- coda::mcmc.list(kernel_chains)
+    
+    # Gelman-Rubin diagnostics
+    gelman <- coda::gelman.diag(
+      kernel_mcmc,
+      autoburnin = FALSE,
+      multivariate = FALSE
+    )
+    
+    gelman_stats <- gelman$psrf[, "Point est."]
+    
+    names(gelman_stats) <- paste0("f(", lags, ")")
+    
+    kernel_summary <- data.frame(
+      lag = lags,
+      Rhat = as.numeric(gelman_stats)
+    )
+    
+    return(list(
+      parameter_summary = summary,
+      kernel_Rhat = kernel_summary,
+      kernl_mcmc = kernel_mcmc
+    ))
+  }
+  
+  return(summary)
 }
