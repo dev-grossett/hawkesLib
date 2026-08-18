@@ -59,9 +59,9 @@ mhp_intensity <- function(t, times, marks, lambda0, A, beta = NULL, theta, w, C,
   f_vals <- as.numeric(basis %*% w) / C   # f(dt_j) for each past event j
   
   if (mark_productivity == "linear") {
-    lambda0 + A * sum(exp(beta * marks) * f_vals)
-  } else if (mark_productivity == "exponential") {
     lambda0 + A * sum(marks * f_vals)
+  } else if (mark_productivity == "exponential") {
+    lambda0 + A * sum(exp(beta * marks) * f_vals)
   }
 }
 
