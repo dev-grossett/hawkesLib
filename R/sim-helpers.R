@@ -4,38 +4,26 @@
 # the developed sampler. 
 ################################################################################
 
-#' Ground intensity of the marked Hawkes process, for use with sim_mhp()
+#' Evaluate the ground intensity of a marked Hawkes process
 #'
-#' Computes \eqn{\lambda_0 + \sum_j A e^{\beta M_j} f(t - T_j)}, the ground
-#' intensity at time \code{t} given event history \code{(times, marks)}.
-#' Matches the same kernel-evaluation logic as \code{\link{update_zs}} and
-#' \code{\link{compensator}} (basis functions evaluated via \code{outer()}
-#' over history x components, then combined via the raw stick-breaking
-#' weights \code{w} and normalising constant \code{C}), just returning the
-#' intensity itself rather than an integrated/compensator form.
-#'
-#' Intended to be passed as \code{sim_mhp()}'s \code{intensity_func}
-#' argument, not called directly in most workflows -- see
-#' \code{\link{simulate_mhp}}.
+#' Computes the conditional ground intensity at time \code{t} for use with
+#' \code{\link{sim_mhp}}.
 #'
 #' @param t Numeric scalar; current time.
-#' @param times Numeric vector; event times strictly before \code{t}
-#'   (supplied by \code{sim_mhp()}'s thinning loop).
-#' @param marks Numeric vector, same length as \code{times}; marks of those
-#'   events.
+#' @param times Numeric vector; previous event times.
+#' @param marks Numeric vector; marks corresponding to \code{times}.
 #' @param lambda0 Numeric scalar; baseline intensity.
 #' @param A Numeric scalar; mark productivity parameter.
-#' @param beta Numeric scalar; optional mark productivity parameter, not 
-#'   required if \code{mark_productivity = "linear"}
-#' @param theta Numeric vector of length K; kernel atom locations.
-#' @param w Numeric vector of length K; raw stick-breaking weights (summing
-#'   to 1) -- not yet divided by \code{C}.
-#' @param C Numeric scalar; kernel normalising constant (as in
-#'   \code{\link{run_sampler}}'s \code{C_fun}).
-#' @param kernel Character; \code{"step"} or \code{"pwlin"}.
-#' @param mark_productivity Character; \code{"linear"} or \code{"exponential"}
+#' @param beta Numeric scalar; exponential mark-productivity parameter.
+#'   Ignored for \code{"linear"} productivity.
+#' @param theta Numeric vector; kernel atom locations.
+#' @param w Numeric vector; raw stick-breaking weights.
+#' @param C Numeric scalar; kernel normalising constant.
+#' @param kernel Character; kernel type, \code{"step"} or \code{"pwlin"}.
+#' @param mark_productivity Character; mark-productivity form,
+#'   \code{"linear"} or \code{"exponential"}.
 #'
-#' @return Numeric scalar; the ground intensity at \code{t}.
+#' @return Numeric scalar; conditional ground intensity at \code{t}.
 #'
 #' @export
 mhp_intensity <- function(t, times, marks, lambda0, A, beta = NULL, theta, w, C,
@@ -66,28 +54,21 @@ mhp_intensity <- function(t, times, marks, lambda0, A, beta = NULL, theta, w, C,
 }
 
 
-#' Simulate a marked Hawkes process from a parameter set
+#' Simulate a marked Hawkes process from model parameters
 #'
-#' Thin convenience wrapper around \code{sim_mhp()}: unpacks a parameter
-#' list (in the same shape used elsewhere in this codebase --
-#' \code{\link{run_sampler}}'s \code{init}, or one row of a posterior
-#' samples matrix), builds the stick-breaking weights and normalising
-#' constant once, and calls \code{sim_mhp()} with \code{\link{mhp_intensity}}
-#' and an iid \code{Exp(gamma)} mark generator -- matching the "marks are
-#' unpredictable" assumption in the generative model.
+#' Wraps \code{\link{sim_mhp}} using the supplied parameters, with
+#' stick-breaking weights and kernel normalisation computed internally.
+#' Marks are generated independently as \eqn{\mathrm{Exp}(\gamma)}.
 #'
-#' @param T_max Numeric scalar; length of the simulation window.
-#' @param params A list with elements \code{lambda0}, \code{A}, \code{beta},
-#'   \code{theta} (length K), \code{v} (length K-1), \code{gamma}. Matches
-#'   the shape of \code{\link{run_sampler}}'s \code{init} argument (minus
-#'   \code{alpha}/\code{phi}, which govern the priors, not the generative
-#'   process itself).
-#' @param kernel Character; \code{"step"} or \code{"pwlin"}.
+#' @param T_max Numeric scalar; simulation window length.
+#' @param params List containing \code{lambda0}, \code{A}, \code{beta},
+#'   \code{theta}, \code{v}, and \code{gamma}.
+#' @param kernel Character; kernel type, \code{"step"} or \code{"pwlin"}.
+#' @param mark_productivity Character; mark-productivity form,
+#'   \code{"linear"} or \code{"exponential"}.
 #'
-#' @return An object of class \code{c("marked_pp_sim", "point_process_sim")},
-#'   as returned by \code{sim_mhp()} -- \code{$events} (times) and
-#'   \code{$marks} are what you'll feed into \code{\link{run_mcmc}} for
-#'   refitting.
+#' @return An object of class \code{c("marked_pp_sim", "point_process_sim")}
+#'   containing the simulated event times and marks.
 #'
 #' @examples
 #' \dontrun{
@@ -97,7 +78,6 @@ mhp_intensity <- function(t, times, marks, lambda0, A, beta = NULL, theta, w, C,
 #'   gamma = 2.2
 #' )
 #' sim <- simulate_mhp(T_max = 500, params = true_params, kernel = "pwlin")
-#' fit <- run_mcmc(sim$events, sim$marks, T_max = 500, kernel = "pwlin", K = 10)
 #' }
 #'
 #' @export
@@ -135,17 +115,15 @@ simulate_mhp <- function(T_max, params, kernel = c("step", "pwlin"),
 }
 
 
-#' Build the "true" kernel function from a set of parameters
+#' Construct the kernel function from model parameters
 #'
-#' Constructs \eqn{f(x) = \sum_k w_k g_k(x)} from a fixed parameter set -- for 
-#' use as the \code{true_kernel} argument to \code{\link{plot_hawkes_kernel}} 
-#' when checking kernel-shape recovery in a simulation study.
+#' Returns the normalised kernel implied by the supplied atom locations and
+#' stick-breaking weights.
 #'
-#' @param params A list with elements \code{theta} (length K), 
-#'   \code{v} (length K-1) -- as in \code{\link{simulate_mhp}}.
-#' @param kernel Character; \code{"step"} or \code{"pwlin"}.
+#' @param params List containing \code{theta} and \code{v}.
+#' @param kernel Character; kernel type, \code{"step"} or \code{"pwlin"}.
 #'
-#' @return A function of \code{x} (vectorised), giving the true kernel value.
+#' @return A vectorised function of \code{x} returning the kernel value.
 #'
 #' @export
 true_kernel_fn <- function(params, kernel = c("step", "pwlin")) {
@@ -173,36 +151,30 @@ true_kernel_fn <- function(params, kernel = c("step", "pwlin")) {
 }
 
 
-#' Run one simulate-and-refit replicate
+#' Simulate and refit one marked Hawkes process replicate
 #'
-#' Simulates one synthetic catalog from \code{true_params} via
-#' \code{\link{simulate_mhp}}, then refits it with \code{\link{run_mcmc}}.
-#' A single building block for \code{\link{run_simulation_study}}; call
-#' directly if you just want to inspect one replicate (e.g. for the kernel
-#' recovery plot).
+#' Simulates one dataset from \code{true_params} and fits the model using
+#' \code{\link{run_mcmc}}.
 #'
-#' @param T_max Numeric scalar; simulation/fit window length.
-#' @param true_params A list as expected by \code{\link{simulate_mhp}}
-#'   (\code{lambda0, A, beta (if "exponential" productivity), theta, v, gamma}).
-#' @param kernel Character; \code{"step"} or \code{"pwlin"}.
-#' @param mark_productivity Character; \code{"linear"} or \code{"exponential"}.
-#' @param K Integer; truncation level used when *refitting* (need not equal
-#'   \code{length(true_params$theta)} -- e.g. you can simulate from a
-#'   simpler true kernel and fit with more components, or vice versa).
-#' @param n_chains,n_iter As in \code{\link{run_mcmc}}. Defaults here are
-#'   lighter than \code{run_mcmc}'s own defaults (2 chains, 4000 iterations)
-#'   since a simulation study cares about calibration across many
-#'   replicates rather than a single maximally-precise fit -- increase if
-#'   individual replicate Rhats look poor.
-#' @param fit_seed,sim_seed Optional integer seeds for the MCMC chains and
-#'   for the data simulation respectively -- kept separate since they seed
-#'   different RNG mechanisms (\code{parallel::clusterSetRNGStream} vs the
-#'   global RNG).
-#' @param prior_params,proposal_sds As in \code{\link{run_mcmc}}.
-#' @param progress Logical; passed to \code{\link{run_mcmc}}.
+#' @param T_max Numeric scalar; simulation and fitting window length.
+#' @param true_params List containing the true simulation parameters:
+#'   \code{lambda0}, \code{A}, \code{beta}, \code{theta}, \code{v}, and
+#'   \code{gamma}.
+#' @param kernel Character; kernel type, \code{"step"} or \code{"pwlin"}.
+#' @param mark_productivity Character; mark-productivity form,
+#'   \code{"linear"} or \code{"exponential"}.
+#' @param K Integer; number of kernel components used when fitting.
+#' @param n_chains Integer; number of MCMC chains.
+#' @param n_iter Integer; number of iterations per chain.
+#' @param fit_seed Integer or \code{NULL}; seed for MCMC fitting.
+#' @param sim_seed Integer or \code{NULL}; seed for data simulation.
+#' @param prior_params List of prior parameters passed to \code{\link{run_mcmc}}.
+#' @param proposal_sds List of proposal standard deviations passed to
+#'   \code{\link{run_mcmc}}.
+#' @param progress Logical; whether to display MCMC progress.
 #'
-#' @return A list with \code{sim} (the simulated \code{point_process_sim}
-#'   object) and \code{fit} (the \code{\link{run_mcmc}} output).
+#' @return A list containing the simulated data in \code{$sim} and the fitted
+#'   model in \code{$fit}.
 #'
 #' @export
 run_mhp_replicate <- function(T_max, true_params, kernel = c("step", "pwlin"), 
@@ -231,69 +203,45 @@ run_mhp_replicate <- function(T_max, true_params, kernel = c("step", "pwlin"),
 }
 
 
-#' Run a full simulation-study scenario (many replicates)
+#' Run a marked Hawkes process simulation study
 #'
-#' Repeats \code{\link{run_mhp_replicate}} \code{R} times under a fixed
-#' \code{true_params} scenario, and summarises bias, RMSE, and credible
-#' interval coverage for \code{lambda0}, \code{A}, \code{beta}, \code{gamma}
-#' -- the scalars with an unambiguous "true value" (kernel-shape recovery,
-#' for \code{theta}/\code{v}, is a separate check -- see the example below
-#' using \code{\link{true_kernel_fn}} with \code{\link{plot_hawkes_kernel}}
-#' on one replicate's fit, since that check is already robust to
-#' mixture-component label switching, whereas a per-component
-#' theta_k/v_k coverage table would not be).
+#' Simulates and fits \code{R} replicates under a fixed parameter scenario,
+#' then summarises bias, RMSE, and credible-interval coverage for the scalar
+#' model parameters.
 #'
-#' Replicates that error (simulation or fitting) are dropped with a warning
-#' rather than aborting the whole study.
+#' Failed replicates are omitted with a warning.
 #'
-#' @param T_max Numeric scalar; simulation/fit window length, shared across
-#'   replicates.
-#' @param true_params A list as in \code{\link{simulate_mhp}}.
-#' @param kernel Character; \code{"step"} or \code{"pwlin"}.
-#' @param mark_productivity Character; \code{"linear"} or \code{"exponential"}.
-#' @param K Integer; truncation level for refitting.
-#' @param R Integer; number of replicates. Default 20.
-#' @param n_chains,n_iter As in \code{\link{run_mhp_replicate}}.
-#' @param base_seed Integer; replicate \code{r} uses seed
-#'   \code{base_seed + r} for both simulation and fitting.
-#' @param prior_params,proposal_sds As in \code{\link{run_mcmc}}.
-#' @param ci_level Numeric in (0, 1); credible interval width used for the
-#'   coverage check. Default 0.90.
-#' @param progress Logical; passed through to each replicate's
-#'   \code{\link{run_mcmc}} call.
-#' @param verbose Logical; print replicate progress to the console.
+#' @param T_max Numeric scalar; simulation and fitting window length.
+#' @param true_params List of true simulation parameters.
+#' @param kernel Character; kernel type, \code{"step"} or \code{"pwlin"}.
+#' @param mark_productivity Character; mark-productivity form,
+#'   \code{"linear"} or \code{"exponential"}.
+#' @param K Integer; number of kernel components used when fitting.
+#' @param R Integer; number of simulation replicates.
+#' @param n_chains Integer; number of MCMC chains per replicate.
+#' @param n_iter Integer; number of MCMC iterations per chain.
+#' @param n_burn Integer or \code{NULL}; number of initial samples to discard
+#'   from each chain before summarising.
+#' @param base_seed Integer; base seed used to initialise each replicate.
+#' @param prior_params List of prior parameters passed to \code{\link{run_mcmc}}.
+#' @param proposal_sds List of proposal standard deviations passed to
+#'   \code{\link{run_mcmc}}.
+#' @param ci_level Numeric in \code{(0, 1)}; credible interval level.
+#' @param progress Logical; whether to display MCMC progress.
+#' @param verbose Logical; whether to print replicate progress.
 #'
-#' @return A list with:
+#' @return A list containing:
 #'   \describe{
-#'     \item{summary}{A data frame: one row per parameter, with
-#'       \code{true_value}, \code{mean_est} (mean of posterior means across
-#'       replicates), \code{bias}, \code{rmse}, and \code{coverage} (empirical
-#'       fraction of replicates whose \code{ci_level} credible interval
-#'       contained the true value).}
-#'     \item{mean_mat, lower_mat, upper_mat}{\code{R x 4} matrices of
-#'       per-replicate posterior mean / lower / upper credible bound, for
-#'       \code{lambda0, A, beta, gamma}.}
-#'     \item{results}{List of length \code{R} (successful replicates only),
-#'       each with \code{$fit} -- useful for e.g. picking one replicate for
-#'       a kernel recovery plot.}
-#'     \item{true_params, kernel, ci_level}{Echoed back for convenience.}
+#'     \item{summary}{Data frame containing the true value, mean estimate,
+#'       bias, RMSE, and coverage for each scalar parameter.}
+#'     \item{mean_mat}{Matrix of posterior means by replicate.}
+#'     \item{lower_mat}{Matrix of lower credible bounds by replicate.}
+#'     \item{upper_mat}{Matrix of upper credible bounds by replicate.}
+#'     \item{results}{List of successful replicate results.}
+#'     \item{true_params}{The supplied true parameter set.}
+#'     \item{kernel}{The kernel type used in the study.}
+#'     \item{ci_level}{The credible interval level used for coverage.}
 #'   }
-#'
-#' @examples
-#' \dontrun{
-#' true_params <- list(
-#'   lambda0 = 0.07, A = 0.08, beta = 1.5,       # comfortably subcritical
-#'   theta = sort(rexp(10, 0.03)), v = rbeta(9, 1, 0.5),
-#'   gamma = 2.2
-#' )
-#' study <- run_simulation_study(T_max = 500, true_params = true_params,
-#'                                kernel = "pwlin", K = 10, R = 20)
-#' study$summary
-#'
-#' # kernel-shape recovery, on one representative replicate
-#' plot_hawkes_kernel(study$results[[1]]$fit$chains, kernel = "pwlin",
-#'                     true_kernel = true_kernel_fn(true_params, "pwlin"))
-#' }
 #'
 #' @export
 run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin"), 
@@ -334,17 +282,18 @@ run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin")
       }
     )
     
+    if (is.null(rep_out)) next
+    
     if (!is.null(n_burn)) {
-      # drop first n_burn samples if provided a non null value
       for (j in seq_along(rep_out$fit$chains)) {
         rep_out$fit$chains[[j]]$samples <-
           rep_out$fit$chains[[j]]$samples[
-            (n_burn + 1):nrow(rep_out$fit$chains[[j]]$samples), , drop = FALSE
+            (n_burn + 1):nrow(rep_out$fit$chains[[j]]$samples),
+            ,
+            drop = FALSE
           ]
       }
     }
-    
-    if (is.null(rep_out)) next
     
     samples <- do.call(
       rbind, 
@@ -406,19 +355,32 @@ run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin")
   )
 }
 
-#' Plot MCMC diagnostics for a simulation study replicate
+#' Diagnose MCMC convergence for a simulation-study replicate
 #'
-#' @param study List; output from \code{run_simulation_study}.
-#' @param R Integer; number of individual replicate to diagnose.
-#' @param start Integer; first iteration of interest.
-#' @param thin Integer; the required interval between successive samples.
-#' @param params
-#' @param lags
-#' @param ... optional arguments to pass to MCMCvis::MCMCtrace
-#' 
+#' Produces standard MCMC summaries and, optionally, trace plots. If
+#' \code{lags} is supplied, also computes Gelman-Rubin statistics for the
+#' posterior kernel evaluated at those lags.
+#'
+#' @param study List; output from \code{\link{run_simulation_study}}.
+#' @param R Integer; replicate number to diagnose.
+#' @param start Integer; first iteration included in the diagnostics.
+#' @param thin Integer; thinning interval.
+#' @param params Character vector; parameters to include in the standard
+#'   MCMC diagnostics, or \code{"all"}.
+#' @param plot Logical; whether to produce trace plots.
+#' @param lags Numeric vector or \code{NULL}; lag values at which to evaluate
+#'   the kernel for convergence diagnostics.
+#' @param ... Additional arguments passed to
+#'   \code{MCMCvis::MCMCtrace}.
+#'
+#' @return If \code{lags = NULL}, a parameter summary from
+#'   \code{MCMCvis::MCMCsummary}. Otherwise, a list containing the parameter
+#'   summary, kernel-specific Gelman-Rubin statistics, and the corresponding
+#'   MCMC object.
+#'
 #' @export
 diagnose_sim_study <- function(study, R, start = 1, thin = 1,
-                               params = "all", lags = NULL, ...) {
+                               params = "all", plot = FALSE, lags = NULL, ...) {
   
   # Extract the MCMC chains object
   chains <- study$results[[R]]$fit$chains
@@ -434,7 +396,7 @@ diagnose_sim_study <- function(study, R, start = 1, thin = 1,
   )
   
   # Standard parameter diagnostics
-  MCMCvis::MCMCtrace(mcmc_chains, params = params, ...)
+  if (plot) MCMCvis::MCMCtrace(mcmc_chains, params = params, ...)
   
   summary <- MCMCvis::MCMCsummary(
     mcmc_chains,
@@ -510,7 +472,7 @@ diagnose_sim_study <- function(study, R, start = 1, thin = 1,
     return(list(
       parameter_summary = summary,
       kernel_Rhat = kernel_summary,
-      kernl_mcmc = kernel_mcmc
+      kernel_mcmc = kernel_mcmc
     ))
   }
   

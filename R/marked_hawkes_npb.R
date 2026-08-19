@@ -14,37 +14,24 @@
 # Everything else is an internal helper (@noRd).
 ################################################################################
 
-#' Sample latent branching structure and mixture-component allocations
+#' Sample latent parent and kernel-component allocations
 #'
-#' For each event, samples which prior event (if any) is its parent, and
-#' which mixture component of the excitation kernel produced it, via a
-#' single categorical draw over {immigrant, every valid (parent, component)
-#' pair}. 
+#' Samples the parent event and mixture component for each event using
+#' a categorical draw over all valid immigrant and offspring assignments.
 #'
-#' @param lambda0 Numeric scalar; baseline (immigrant) intensity.
-#' @param A Numeric scalar; mark productivity parameter 
-#' @param beta Numeric scalar; optional mark productivity parameter, not 
-#'   required if \code{mark_productivity = "linear"}
-#' @param w Numeric vector of length K; stick-breaking mixture weights
-#'   (raw weights that sum to 1, as constructed by the caller).
-#' @param C Numeric scalar; kernel normalising constant, e.g.
-#'   \code{sum(w * theta)} (step) or \code{0.5 * sum(w * theta^2)} (pwlin).
-#' @param theta Numeric vector of length K; kernel atom locations.
-#' @param times Numeric vector of event times, sorted ascending.
-#' @param marks Numeric vector, same length as \code{times}; the mark
-#'   (e.g. magnitude) of each event.
+#' @param lambda0 Numeric; baseline intensity.
+#' @param A Numeric; mark productivity scale.
+#' @param beta Numeric; exponential mark-productivity slope, if required.
+#' @param w Numeric vector; length-K mixture weights.
+#' @param C Numeric; kernel normalising constant.
+#' @param theta Numeric vector; length-K kernel atom locations.
+#' @param times Numeric vector; sorted event times.
+#' @param marks Numeric vector; event marks.
 #' @param kernel Character; \code{"step"} or \code{"pwlin"}.
-#' @param mark_productivity Character; \code{"linear"} or \code{"exponential"}
+#' @param mark_productivity Character; \code{"linear"} or \code{"exponential"}.
 #'
-#' @return A list with:
-#'   \describe{
-#'     \item{z}{Integer vector, same length as \code{times}. \code{z[i] == 0}
-#'       marks event \code{i} as an immigrant; otherwise \code{z[i]} is the
-#'       index of event \code{i}'s parent.}
-#'     \item{s}{Integer vector, same length as \code{times}. The mixture
-#'       component that produced event \code{i}, or \code{NA} for
-#'       immigrants.}
-#'   }
+#' @return List with integer vectors \code{z} (parent indices, with 0 for
+#'   immigrants) and \code{s} (kernel-component allocations).
 #'
 #' @keywords internal
 update_zs <- function(lambda0, A, beta = NULL, w, C, theta, times, marks, 
@@ -118,44 +105,26 @@ update_zs <- function(lambda0, A, beta = NULL, w, C, theta, times, marks,
   return(list(z = z, s = s))
 }
 
-#' Full conditional log-posterior for a single kernel atom theta_k
+#' Log full conditional for a kernel atom
 #'
-#' Evaluates the (unnormalised) log full conditional of \code{theta_k} on
-#' the log scale, for use in a Metropolis-within-Gibbs update. Only offspring
-#' events allocated to component \code{k} depend on \code{theta_k} through
-#' the kernel basis function; offspring allocated to other components are
-#' constant with respect to \code{theta_k} and are deliberately excluded from
-#' both the validity check and the log-density sum, so that an unrelated
-#' component's (in)validity can never leak a spurious \code{-Inf} into this
-#' component's Metropolis ratio. The normalising constant \code{C}, by
-#' contrast, genuinely depends on every component and is always recomputed
-#' in full. (Unaffected by marks/A/beta -- those only enter through
-#' \code{\link{update_zs}} and their own full conditionals, not through the
-#' kernel shape.)
-#' 
-#' @param log_theta_k Numeric scalar; proposed value of \code{theta_k} on
-#'   the log scale (this function samples on the log scale so a Gamma-type
-#'   positive parameter can use a symmetric random-walk proposal).
-#' @param k Integer; index of the component being updated.
-#' @param w Numeric vector of length K; current stick-breaking weights.
-#' @param theta Numeric vector of length K; current atom locations (entry
-#'   \code{k} is overwritten internally by the proposed value).
-#' @param phi Numeric scalar; rate parameter of the Gamma prior on
-#'   \code{theta_k}.
-#' @param times Numeric vector of all event times.
-#' @param O_idx Integer vector; indices of offspring events (i.e.
-#'   \code{which(z != 0)}).
-#' @param z Integer vector; parent index for each event (0 for immigrants).
-#' @param s Integer vector; mixture component allocation for each event
-#'   (\code{NA} for immigrants).
-#' @param C_fun Function of \code{(w, theta)} returning the kernel
-#'   normalising constant.
+#' Evaluates the log full conditional of \code{theta_k} on the log scale,
+#' including the Jacobian of the log transformation.
+#'
+#' @param log_theta_k Numeric; proposed log atom location.
+#' @param k Integer; component index.
+#' @param w Numeric vector; mixture weights.
+#' @param theta Numeric vector; current atom locations.
+#' @param phi Numeric; Gamma prior rate for \code{theta_k}.
+#' @param times Numeric vector; event times.
+#' @param O_idx Integer vector; offspring-event indices.
+#' @param z Integer vector; parent indices.
+#' @param s Integer vector; kernel-component allocations.
+#' @param C_fun Function; computes the kernel normalising constant from
+#'   \code{w} and \code{theta}.
 #' @param kernel Character; \code{"step"} or \code{"pwlin"}.
 #'
-#' @return Numeric scalar: the log full conditional density (posterior plus
-#'   log-Jacobian of the log transform) at \code{log_theta_k}, or
-#'   \code{-Inf} if the proposal is incompatible with an offspring event's
-#'   observed waiting time.
+#' @return Numeric; log full conditional density, or \code{-Inf} for an
+#'   invalid proposal.
 #'
 #' @keywords internal
 logpost_theta_k <- function(log_theta_k, k, w, theta, phi, times, O_idx,
@@ -200,42 +169,23 @@ logpost_theta_k <- function(log_theta_k, k, w, theta, phi, times, O_idx,
 }
 
 
-#' Full conditional log-posterior for a single stick-breaking variable v_k
+#' Log full conditional for a stick-breaking variable
 #'
-#' Evaluates the (unnormalised) log full conditional of \code{v_k} on the
-#' logit scale, for use in a Metropolis-within-Gibbs update. Stick-breaking
-#' weight \code{w_m} depends on \code{v_k} through a factor of \code{v_k}
-#' when \code{m == k}, through a common factor of \code{(1 - v_k)} when
-#' \code{m > k}, and not at all when \code{m < k}. Rather than summing
-#' \code{log(w_prop[s_O])} over every offspring event (which risks a
-#' \code{-Inf / -Inf -> NaN} collision if some unrelated component has
-#' already saturated to ~0 weight elsewhere in the same sweep), only the
-#' part that truly depends on \code{v_k} is computed directly, using the
-#' precomputed per-component offspring counts \code{n_comp} (allocated to
-#' exactly component \code{k}) and \code{m_comp} (allocated to any component
-#' above \code{k}). Unaffected by marks, same reasoning as
-#' \code{\link{logpost_theta_k}}.
+#' Evaluates the log full conditional of \code{v_k} on the logit scale,
+#' including the Beta prior and transformation Jacobian.
 #'
-#' @param logit_v_k Numeric scalar; proposed value of \code{v_k} on the
-#'   logit scale.
-#' @param k Integer; index of the stick-breaking variable being updated
-#'   (\code{1, ..., K-1}).
-#' @param v Numeric vector of length K-1; current stick-breaking variables
-#'   (entry \code{k} is overwritten internally by the proposed value).
-#' @param theta Numeric vector of length K; current atom locations.
-#' @param alpha Numeric scalar; concentration parameter of the Beta(1,
-#'   alpha) stick-breaking prior.
-#' @param n_comp Integer vector of length K; number of offspring events
-#'   allocated to exactly each component.
-#' @param m_comp Integer vector of length K; number of offspring events
-#'   allocated to any component with a strictly greater index.
-#' @param n_off Integer scalar; total number of offspring events (i.e.
-#'   \code{sum(n_comp)}).
-#' @param C_fun Function of \code{(w, theta)} returning the kernel
-#'   normalising constant.
+#' @param logit_v_k Numeric; proposed logit stick-breaking value.
+#' @param k Integer; component index, from 1 to K-1.
+#' @param v Numeric vector; current stick-breaking variables.
+#' @param theta Numeric vector; kernel atom locations.
+#' @param alpha Numeric; Beta(1, alpha) concentration parameter.
+#' @param n_comp Integer vector; offspring counts by component.
+#' @param m_comp Integer vector; offspring counts allocated to components
+#'   with index greater than each component.
+#' @param n_off Integer; total number of offspring events.
+#' @param C_fun Function; computes the kernel normalising constant.
 #'
-#' @return Numeric scalar: the log full conditional density (posterior plus
-#'   log-Jacobian of the logit transform) at \code{logit_v_k}.
+#' @return Numeric; log full conditional density at \code{logit_v_k}.
 #'
 #' @keywords internal
 logpost_v_k <- function(logit_v_k, k, v, theta, alpha, 
@@ -265,27 +215,18 @@ logpost_v_k <- function(logit_v_k, k, v, theta, alpha,
 }
 
 
-#' Full conditional log-posterior for the mark-productivity slope beta
+#' Log full conditional for the exponential mark-productivity slope
 #'
-#' Evaluates the (unnormalised) log full conditional of \code{beta}, for use
-#' in a Metropolis-within-Gibbs update. Unlike \code{theta_k}/\code{v_k},
-#' \code{beta} is already unconstrained (any sign is meaningful -- the data
-#' determines whether productivity increases or decreases with mark), so
-#' this uses a plain symmetric random-walk proposal on \code{beta} itself,
-#' with no transform or Jacobian needed. 
+#' Evaluates the log full conditional of \code{beta}.
 #'
-#' @param beta Numeric scalar; proposed value of the mark-productivity
-#'   slope.
-#' @param A Numeric scalar; current productivity scale.
-#' @param marks Numeric vector of all event marks (every event, not just
-#'   offspring -- every event can be a candidate parent).
-#' @param sum_M_off Numeric scalar; sum of the parent's mark over every
-#'   offspring event, i.e. \code{sum(marks[z[O_idx]])}.
-#' @param mu_beta Numeric scalar; mean of the Normal prior on \code{beta}.
-#' @param sd_beta Numeric scalar; standard deviation of the Normal prior on
-#'   \code{beta}.
+#' @param beta Numeric; proposed mark-productivity slope.
+#' @param A Numeric; productivity scale.
+#' @param marks Numeric vector; event marks.
+#' @param sum_M_off Numeric; sum of parent marks over offspring events.
+#' @param mu_beta Numeric; Normal prior mean.
+#' @param sd_beta Numeric; Normal prior standard deviation.
 #'
-#' @return Numeric scalar: the log full conditional density at \code{beta}.
+#' @return Numeric; log full conditional density at \code{beta}.
 #'
 #' @keywords internal
 logpost_beta <- function(beta, A, marks, sum_M_off, mu_beta, sd_beta) {
@@ -299,48 +240,38 @@ logpost_beta <- function(beta, A, marks, sum_M_off, mu_beta, sd_beta) {
 }
 
 
-#' Run a single Metropolis-within-Gibbs marked-Hawkes MCMC chain
+#' Run one marked-Hawkes MCMC chain
 #'
-#' Runs one chain of the sampler: at each iteration, resamples the latent
-#' branching structure and component allocations
-#' (\code{\link{update_zs}}), updates \code{lambda0}, \code{A}, \code{alpha},
-#' \code{phi}, and \code{gamma} via their conjugate Gamma full conditionals,
-#' and updates every \code{theta_k} and \code{v_k} via a
-#' Metropolis-within-Gibbs sweep using \code{\link{logpost_theta_k}} and
-#' \code{\link{logpost_v_k}}. This is an internal worker called once per
-#' chain (typically in parallel) by \code{\link{run_mcmc}}; end users should
-#' call \code{run_mcmc} directly rather than this function.
+#' Runs a Metropolis-within-Gibbs sampler for one marked Hawkes process chain.
+#' This is an internal worker called by \code{\link{run_mcmc}}.
 #'
-#' @param times Numeric vector of event times, sorted ascending (already
-#'   time-scaled if scaling is in use -- scaling itself is handled by
-#'   \code{\link{run_mcmc}}, not here).
-#' @param marks Numeric vector, same length as \code{times}; the mark of
-#'   each event (not time-scaled -- marks are a separate physical quantity).
-#' @param T_max Numeric scalar; observation window length (already
-#'   time-scaled, consistent with \code{times}).
-#' @param n_iter Integer; number of MCMC iterations to run.
-#' @param init A list giving the initial state, with elements
-#'   \code{lambda0}, \code{A}, \code{theta} (length K), \code{v} (length
-#'   K-1), \code{alpha}, \code{phi}, and \code{gamma}.
-#' @param prior_params A list of prior hyperparameters; see
-#'   \code{\link{default_prior_params}} for the expected names.
-#' @param proposal_sds A list of Metropolis random-walk proposal standard
-#'   deviations; see \code{\link{default_proposal_sds}} for the expected
-#'   names.
+#' @param times Numeric vector; sorted event times on the fitting time scale.
+#' @param marks Numeric vector; event marks.
+#' @param T_max Numeric; observation-window length on the fitting time scale.
+#' @param n_iter Integer; number of MCMC iterations.
+#' @param init List; initial values for \code{lambda0}, \code{A}, \code{beta}
+#'   (if exponential), \code{theta}, \code{v}, \code{alpha}, \code{phi}, and
+#'   \code{gamma}.
+#' @param prior_params List; prior hyperparameters, as returned by
+#'   \code{\link{default_prior_params}}.
+#' @param proposal_sds List; Metropolis proposal standard deviations, as
+#'   returned by \code{\link{default_proposal_sds}}.
 #' @param kernel Character; \code{"step"} or \code{"pwlin"}.
-#' @param progress Logical; if \code{TRUE}, display a text progress bar.
+#' @param mark_productivity Character; \code{"linear"} or \code{"exponential"}.
+#' @param progress Logical; whether to display a progress bar.
+#' @param adapt Logical; whether to adapt proposal standard deviations.
+#' @param adapt_start Integer; first iteration eligible for adaptation.
+#' @param adapt_end Integer; last iteration eligible for adaptation.
+#' @param adapt_interval Integer; number of iterations between adaptations.
+#' @param target_accept Numeric; target Metropolis acceptance rate.
 #'
-#' @return A list with:
+#' @return List containing:
 #'   \describe{
-#'     \item{samples}{An \code{n_iter x (5 + K + (K-1))} matrix of posterior
-#'       draws, with columns \code{lambda0}, \code{A}, \code{theta1...K},
-#'       \code{v1...(K-1)}, \code{alpha}, \code{phi}, \code{gamma}.}
-#'     \item{acceptance_rates}{Named numeric vector; overall Metropolis
-#'       acceptance rate for the \code{theta} and \code{v} sweeps.}
-#'     \item{n_immigrant}{Numeric vector of length \code{n_iter}; number of
-#'       immigrant events sampled at each iteration.}
-#'     \item{n_offspring}{Numeric vector of length \code{n_iter}; number of
-#'       offspring events sampled at each iteration.}
+#'     \item{samples}{Matrix of posterior draws.}
+#'     \item{acceptance_rates}{Named acceptance rates for each Metropolis-updated parameter.}
+#'     \item{n_immigrant}{Immigrant count at each iteration.}
+#'     \item{n_offspring}{Offspring count at each iteration.}
+#'     \item{tuned_proposal_sds}{Final adapted proposal standard deviations.}
 #'   }
 #'
 #' @keywords internal
@@ -348,7 +279,12 @@ logpost_beta <- function(beta, A, marks, sum_M_off, mu_beta, sd_beta) {
 run_sampler <- function(times, marks, T_max, n_iter, init, prior_params, 
                         proposal_sds, kernel = c("step", "pwlin"), 
                         mark_productivity = c("linear", "exponential"), 
-                        progress = TRUE) {
+                        progress = TRUE, 
+                        adapt = TRUE,
+                        adapt_start = 1,
+                        adapt_end = floor(n_iter / 2),
+                        adapt_interval = 100,
+                        target_accept = 0.3) {
   
   kernel <- match.arg(kernel)
   mark_productivity <- match.arg(mark_productivity)
@@ -356,25 +292,28 @@ run_sampler <- function(times, marks, T_max, n_iter, init, prior_params,
   samples <- matrix(NA, n_iter, sum(lengths(init)))
 
   if (mark_productivity == "linear") {
-    acceptance <- matrix(NA, n_iter, 2)
-    proposals <- matrix(c(length(init$theta), length(init$v)), 
-                        n_iter, 2, byrow = TRUE)
+    acceptance <- matrix(NA, n_iter, length(init$theta) + length(init$v))
+    # proposals <- matrix(c(length(init$theta), length(init$v)), 
+    #                     n_iter, 2, byrow = TRUE)
     colnames(samples) <- c("lambda0", "A", 
                            paste0("theta", 1:(length(init$theta))), 
                            paste0("v", 1:(length(init$v))),
                            "alpha", "phi", "gamma")
-    colnames(acceptance) <- c("theta", "v")
-    colnames(proposals) <- c("theta", "v")
+    colnames(acceptance) <- c(paste0("theta", 1:length(init$theta)), 
+                              paste0("v", 1:length(init$v)))
+    # colnames(proposals) <- c("theta", "v")
   } else if (mark_productivity == "exponential") {
-    acceptance <- matrix(NA, n_iter, 3)
-    proposals <- matrix(c(length(init$theta), length(init$v), 1), 
-                        n_iter, 3, byrow = TRUE)
+    acceptance <- matrix(NA, n_iter, length(init$theta) + length(init$v) + 1)
+    # proposals <- matrix(c(length(init$theta), length(init$v), 1), 
+    #                     n_iter, 3, byrow = TRUE)
     colnames(samples) <- c("lambda0", "A", "beta",
                            paste0("theta", 1:(length(init$theta))), 
                            paste0("v", 1:(length(init$v))),
                            "alpha", "phi", "gamma")
-    colnames(acceptance) <- c("theta", "v", "beta")
-    colnames(proposals) <- c("theta", "v", "beta")
+    colnames(acceptance) <- c(paste0("theta", 1:length(init$theta)), 
+                              paste0("v", 1:length(init$v)),
+                              "beta")
+    # colnames(proposals) <- c("theta", "v", "beta")
   }
   n_immigrant <- numeric(n_iter)
   n_offspring <- numeric(n_iter)
@@ -392,6 +331,12 @@ run_sampler <- function(times, marks, T_max, n_iter, init, prior_params,
   # some preliminary calculations
   N_T <- length(times)
   K <- length(init$theta)
+  
+  # Proposal SDs can be supplied either as a single value or as a separate value
+  # for each parameter.
+  theta_proposal_sds <- rep(proposal_sds$theta_k, length.out = K)
+  v_proposal_sds <- rep(proposal_sds$v_k, length.out = K - 1)
+  if (mark_productivity == "exponential") beta_proposal_sd <- proposal_sds$beta
   
   # Stick-break weights
   remaining <- cumprod(c(1, 1 - v))
@@ -411,6 +356,16 @@ run_sampler <- function(times, marks, T_max, n_iter, init, prior_params,
                          style = 3,    
                          width = 50,   
                          char = "=")   
+  }
+  
+  # Per-parameter acceptance counters used for adaptive tuning
+  batch_accept_theta <- numeric(K)
+  batch_proposals_theta <- numeric(K)
+  batch_accept_v <- numeric(K - 1)
+  batch_proposals_v <- numeric(K - 1)
+  if (mark_productivity == "exponential") {
+    batch_accept_beta <- 0
+    batch_proposals_beta <- 0
   }
   
   for (iter in 1:n_iter) {
@@ -463,7 +418,7 @@ run_sampler <- function(times, marks, T_max, n_iter, init, prior_params,
     # beta (mark-productivity slope; Metropolis, no transform needed since
     # beta is already on an unconstrained scale)
     if (mark_productivity == "exponential") {
-      beta_prop <- rnorm(1, beta, proposal_sds$beta)
+      beta_prop <- rnorm(1, beta, beta_proposal_sd)
       lp_prop <- logpost_beta(beta_prop, A, marks, sum_M_off, 
                               prior_params$mu_beta, prior_params$sd_beta)
       lp_curr <- logpost_beta(beta, A, marks, sum_M_off, 
@@ -477,13 +432,18 @@ run_sampler <- function(times, marks, T_max, n_iter, init, prior_params,
         beta <- beta_prop
       }
       acceptance[iter, "beta"] <- as.integer(accept_beta)
+      
+      # Adaptation bookkeeping
+      if (adapt && iter >= adapt_start && iter <= adapt_end) {
+        batch_proposals_beta <- batch_proposals_beta + 1
+        batch_accept_beta <- batch_accept_beta + as.integer(accept_beta)
+      }
     }
       
     # Theta_k (Metropolis-within-Gibbs)
-    accepted <- 0
     for (k_theta in 1:K) {
       current <- log(theta[k_theta])
-      proposal <- rnorm(1, current, proposal_sds$theta_k)
+      proposal <- rnorm(1, current, theta_proposal_sds[k_theta])
       lp_prop <- logpost_theta_k(proposal, k_theta, w, theta, phi, 
                                  times, O_idx, z, s, C_fun, kernel)
       lp_curr <- logpost_theta_k(current, k_theta, w, theta, phi, 
@@ -500,16 +460,20 @@ run_sampler <- function(times, marks, T_max, n_iter, init, prior_params,
       
       if (accept) {
         theta[k_theta] <- exp(proposal)
-        accepted <- accepted + 1
+      }
+      acceptance[iter, paste0("theta", k_theta)] <- as.integer(accept)
+      
+      # Adaptation bookkeeping
+      if (adapt && iter >= adapt_start && iter <= adapt_end) {
+        batch_proposals_theta[k_theta] <- batch_proposals_theta[k_theta] + 1
+        batch_accept_theta[k_theta] <- batch_accept_theta[k_theta] + as.integer(accept)
       }
     }
-    acceptance[iter, "theta"] <- accepted
     
     # v_k (Metropolis-within-Gibbs, systematic sweep over all K-1 sticks)
-    accepted <- 0
     for (k_v in 1:(K - 1)) {
       current <- qlogis(v[k_v])
-      proposal <- rnorm(1, current, proposal_sds$v_k)
+      proposal <- rnorm(1, current, v_proposal_sds[k_v])
       
       lp_prop <- logpost_v_k(proposal, k_v, v, theta, alpha, n_comp, m_comp, n_off, C_fun)
       lp_curr <- logpost_v_k(current,  k_v, v, theta, alpha, n_comp, m_comp, n_off, C_fun)
@@ -522,10 +486,69 @@ run_sampler <- function(times, marks, T_max, n_iter, init, prior_params,
       
       if (accept) {
         v[k_v] <- plogis(proposal)
-        accepted <- accepted + 1
+      }
+      acceptance[iter, paste0("v", k_v)] <- as.integer(accept)
+      
+      # Adaptation bookkeeping
+      if (adapt && iter >= adapt_start && iter <= adapt_end) {
+        batch_proposals_v[k_v] <- batch_proposals_v[k_v] + 1
+        batch_accept_v[k_v] <- batch_accept_v[k_v] + as.integer(accept)
       }
     }
-    acceptance[iter, "v"] <- accepted
+    
+    # Adaptive tuning during burn-in
+    if (adapt &&
+        iter >= adapt_start &&
+        iter <= adapt_end &&
+        iter %% adapt_interval == 0) {
+      
+      # ---- theta_k ----
+      theta_rates <- batch_accept_theta / pmax(batch_proposals_theta, 1)
+      
+      for (k in 1:K) {
+        if (batch_proposals_theta[k] > 0) {
+          # smooth log-scale adaptation 
+          theta_proposal_sds[k] <- theta_proposal_sds[k] *
+            exp(1 * (theta_rates[k] - target_accept))
+          # apply some lower and upper bounds
+          theta_proposal_sds[k] <- min(max(theta_proposal_sds[k], 0.01), 5)
+        }
+      }
+      
+      # ---- v_k ----
+      v_rates <- batch_accept_v / pmax(batch_proposals_v, 1)
+      for (k in 1:(K - 1)) {
+        if (batch_proposals_v[k] > 0) {
+          # smooth log-scale adaptation 
+          v_proposal_sds[k] <- v_proposal_sds[k] *
+            exp(1 * (v_rates[k] - target_accept))
+          # apply some lower and upper bounds
+          v_proposal_sds[k] <- min(max(v_proposal_sds[k], 0.01), 3)
+        }
+      }
+      
+      # ---- beta ----
+      if (mark_productivity == "exponential") {
+        if (batch_proposals_beta > 0) {
+          beta_rate <- batch_accept_beta / batch_proposals_beta
+          # smooth log-scale adaptation 
+          beta_proposal_sd <- beta_proposal_sd *
+            exp(1 * (beta_rate - target_accept))
+          # apply some lower and upper bounds
+          beta_proposal_sd <- min(max(beta_proposal_sd, 0.01), 3)
+        }
+      }
+      
+      # Reset batch counters
+      batch_accept_theta <- numeric(K)
+      batch_proposals_theta <- numeric(K)
+      batch_accept_v <- numeric(K - 1)
+      batch_proposals_v <- numeric(K - 1)
+      if (mark_productivity == "exponential") {
+        batch_accept_beta <- 0
+        batch_proposals_beta <- 0
+      }
+    }
     
     # recalculate stick-break weights after sampling v_k
     remaining <- cumprod(c(1, 1 - v))
@@ -569,90 +592,69 @@ run_sampler <- function(times, marks, T_max, n_iter, init, prior_params,
     close(pb)
   }
   
-  acceptance_rates <- colSums(acceptance)/colSums(proposals)
+  # post adaptation acceptance
+  acceptance_rates <- colMeans(acceptance[1:adapt_end, ])
   
   return(list(
     samples = samples, 
     acceptance_rates = acceptance_rates,
     n_immigrant = n_immigrant,
-    n_offspring = n_offspring
+    n_offspring = n_offspring,
+    tuned_proposal_sds = list(
+      theta_k = theta_proposal_sds,
+      v_k = v_proposal_sds,
+      beta = if (mark_productivity == "exponential") {
+        beta_proposal_sd
+      } else {
+        NULL
+      }
+    )
   ))
 }
 
-#' Fit a marked Hawkes process with a Dirichlet process mixture kernel
+#' Fit a marked Hawkes process with a DP mixture excitation kernel
 #'
-#' Runs \code{n_chains} independent Metropolis-within-Gibbs MCMC chains (in
-#' parallel, via a \code{parallel::makeCluster} PSOCK cluster) for a marked
-#' Hawkes process whose excitation kernel is a K-component truncated
-#' stick-breaking (Dirichlet process) mixture of step or piecewise-linear
-#' basis functions, and whose offspring productivity scales either linearly or 
-#' exponentially with each parent's mark. This is the main user-facing entry 
-#' point; \code{\link{run_sampler}} and friends are internal workers called once
-#' per chain.
+#' Runs independent parallel MCMC chains for a marked Hawkes process with a
+#' truncated stick-breaking mixture of step or piecewise-linear kernels and
+#' linear or exponential mark-dependent productivity.
 #'
-#' Event times are optionally rescaled before fitting (\code{scale_time =
-#' TRUE}, the default) so that the baseline intensity is roughly of order 1,
-#' which helps the default proposal standard deviations behave sensibly
-#' across data sets with very different time units or event rates. Marks are
-#' never rescaled -- they are a separate physical quantity unrelated to
-#' time. Posterior samples are transformed back to the original time scale
-#' automatically before being returned (via \code{\link{unscale_chain}}), so
-#' downstream code never needs to know whether scaling was used.
+#' Event times can be rescaled for fitting and are automatically transformed
+#' back to the original time scale in the returned posterior samples.
 #'
-#' @param times Numeric vector of event times, sorted ascending, on their
-#'   original (unscaled) time unit.
-#' @param marks Numeric vector, same length as \code{times}; the mark
-#'   (e.g. magnitude) of each event.
-#' @param T_max Numeric scalar; length of the observation window, on the
-#'   same original time unit as \code{times}.
-#' @param kernel Character; \code{"step"} or \code{"pwlin"}. Partially
-#'   matched via \code{match.arg}.
-#' @param mark_productivity Character; \code{"linear"} or \code{"exponential"}
-#' @param K Integer; truncation level of the stick-breaking mixture (number
-#'   of mixture components). Default 20.
-#' @param n_chains Integer; number of independent MCMC chains to run in
-#'   parallel. Default 4.
-#' @param n_iter Integer; number of MCMC iterations per chain. Default 8000.
-#' @param seed Integer; seed for \code{parallel::clusterSetRNGStream}, giving
-#'   reproducible, independent RNG streams across chains. Default 123.
-#' @param prior_params A list of prior hyperparameters; see
-#'   \code{\link{default_prior_params}}. Defaults to
-#'   \code{default_prior_params()}.
-#' @param proposal_sds A list of Metropolis random-walk proposal standard
-#'   deviations; see \code{\link{default_proposal_sds}}. Defaults to
-#'   \code{default_proposal_sds()}.
-#' @param scale_time Logical; if \code{TRUE} (the default), rescale time so
-#'   the baseline intensity is roughly 1 before fitting, then transform
-#'   posterior samples back to the original scale.
-#' @param save_path Optional file path; if supplied, the fitted chains are
-#'   saved to this path via \code{saveRDS} as a side effect.
-#' @param progress Logical; if \code{TRUE}, display a text progress bar for
-#'   each chain. Default \code{FALSE} (recommended when running many chains
-#'   in parallel, since progress bars from parallel workers do not display
-#'   in the calling session).
+#' @param times Numeric vector; sorted event times.
+#' @param marks Numeric vector; event marks.
+#' @param T_max Numeric; observation-window length.
+#' @param kernel Character; \code{"step"} or \code{"pwlin"}.
+#' @param mark_productivity Character; \code{"linear"} or \code{"exponential"}.
+#' @param K Integer; number of mixture components. Default 20.
+#' @param n_chains Integer; number of parallel MCMC chains. Default 4.
+#' @param n_iter Integer; iterations per chain. Default 8000.
+#' @param seed Integer; random-number seed. Default 123.
+#' @param prior_params List; prior hyperparameters. Defaults to
+#'   \code{\link{default_prior_params}}().
+#' @param proposal_sds List; Metropolis proposal standard deviations. Defaults
+#'   to \code{\link{default_proposal_sds}}().
+#' @param scale_time Logical; whether to rescale time before fitting. Default
+#'   \code{TRUE}.
+#' @param save_path Character or \code{NULL}; optional path for saving chains
+#'   with \code{saveRDS}.
+#' @param progress Logical; whether workers display progress bars. Default
+#'   \code{FALSE}.
+#' @param adapt Logical; whether to adapt proposal standard deviations.
+#' @param adapt_start Integer; first iteration eligible for adaptation.
+#' @param adapt_end Integer; last iteration eligible for adaptation.
+#' @param adapt_interval Integer; iterations between adaptations.
+#' @param target_accept Numeric; target Metropolis acceptance rate. Default 0.30.
 #'
-#' @return A list with:
-#'   \describe{
-#'     \item{chains}{A list of length \code{n_chains}, each element being
-#'       the list returned by \code{\link{run_sampler}} for that chain
-#'       (already transformed back to the original time scale if
-#'       \code{scale_time = TRUE}).}
-#'     \item{time_scale}{Numeric scalar; the scaling factor applied to time
-#'       (1 if \code{scale_time = FALSE}).}
-#'     \item{settings}{A list recording the call's configuration
-#'       (\code{T_max}, \code{n_events}, \code{kernel}, \code{K},
-#'       \code{n_chains}, \code{n_iter}, \code{seed}, \code{scale_time}).}
-#'     \item{prior_params, proposal_sds, init_list}{The prior
-#'       hyperparameters, proposal standard deviations, and per-chain
-#'       initial values used to fit the model.}
-#'   }
+#' @return List containing the fitted \code{chains}, \code{time_scale},
+#'   \code{settings}, \code{prior_params}, \code{proposal_sds}, and
+#'   \code{init_list}.
 #'
 #' @examples
 #' \dontrun{
-#' result <- run_mcmc(times, marks, T_max, kernel = "pwlin", 
-#'                    mark_productivity = "linear", K = 10, n_chains = 4, 
-#'                    n_iter = 8000)
-#' result$chains[[1]]$acceptance_rates
+#' fit <- run_mcmc(times, marks, T_max, kernel = "pwlin",
+#'                 mark_productivity = "linear")
+#' fit$chains[[1]]$acceptance_rates
 #' }
 #'
 #' @export
@@ -670,7 +672,12 @@ run_mcmc <- function(
     proposal_sds = default_proposal_sds(), 
     scale_time = TRUE,
     save_path = NULL, 
-    progress = FALSE
+    progress = FALSE,
+    adapt = TRUE,
+    adapt_start = 1,
+    adapt_end = floor(n_iter / 2),
+    adapt_interval = 100,
+    target_accept = 0.30
 ) {
   
   kernel <- match.arg(kernel)
@@ -742,6 +749,11 @@ run_mcmc <- function(
       "kernel", 
       "mark_productivity",
       "progress",
+      "adapt",
+      "adapt_start",
+      "adapt_end",
+      "adapt_interval",
+      "target_accept",
       "run_sampler", 
       "logpost_theta_k", 
       "logpost_v_k",
@@ -766,7 +778,12 @@ run_mcmc <- function(
         proposal_sds = proposal_sds,
         kernel = kernel,
         mark_productivity = mark_productivity,
-        progress = progress
+        progress = progress,
+        adapt = adapt,
+        adapt_start = adapt_start,
+        adapt_end = adapt_end,
+        adapt_interval = adapt_interval,
+        target_accept = target_accept
       )
     }
   )
@@ -807,6 +824,12 @@ run_mcmc <- function(
 
 #' Default prior hyperparameters
 #'
+#' Returns the default Gamma and Normal prior hyperparameters used by the
+#' marked-Hawkes sampler.
+#'
+#' @return Named list of prior hyperparameters for \code{lambda0}, \code{alpha},
+#'   \code{phi}, \code{A}, \code{beta}, and \code{gamma}.
+#'
 #' @keywords internal
 #' @export
 default_prior_params <- function() {
@@ -826,7 +849,13 @@ default_prior_params <- function() {
   )
 }
 
-#' Default Metropolis proposal standard deviations
+#' Default MCMC proposal standard deviations
+#'
+#' Returns the default random-walk proposal standard deviations for
+#' \code{theta}, \code{v}, and \code{beta}.
+#'
+#' @return Named list with elements \code{theta_k}, \code{v_k}, and
+#'   \code{beta}.
 #'
 #' @keywords internal
 #' @export
@@ -834,25 +863,16 @@ default_proposal_sds <- function() {
   list(theta_k = 1, v_k = 1, beta = 0.2)
 }
 
-#' Transform a chain's posterior samples back to the original time scale
+#' Transform posterior samples back to the original time scale
 #'
-#' Undoes the rescaling applied by \code{\link{run_mcmc}} when
-#' \code{scale_time = TRUE}: \code{lambda0} and \code{phi} are rates (events
-#' per unit time / inverse-time), so they are divided by \code{time_scale};
-#' the kernel atoms \code{theta1, ..., thetaK} are themselves time
-#' durations, so they are multiplied by \code{time_scale}. \code{A}, 
-#' \code{beta}, \code{v1, ..., v(K-1)}, \code{alpha}, and \code{gamma} are 
-#' dimensionless or relate to marks rather than time, and are left unchanged.
+#' Reverses the time scaling applied by \code{\link{run_mcmc}} to rates and
+#' kernel atom locations.
 #'
-#' @param chain A list as returned by \code{\link{run_sampler}}, containing
-#'   a \code{$samples} matrix with columns \code{lambda0}, \code{A},
-#'   \code{theta1...K}, \code{v1...(K-1)}, \code{alpha}, \code{phi},
-#'   \code{gamma}.
-#' @param time_scale Numeric scalar; the scaling factor originally applied
-#'   to time (i.e. \code{times_scaled = times / time_scale}).
+#' @param chain List; fitted chain returned by \code{\link{run_sampler}}.
+#' @param time_scale Numeric; time scaling factor used during fitting.
 #'
-#' @return The input \code{chain} list, with \code{chain$samples}
-#'   transformed back to the original time scale.
+#' @return The input chain with time-dependent posterior parameters restored
+#'   to their original scale.
 #'
 #' @keywords internal
 unscale_chain <- function(chain, time_scale) {
@@ -877,77 +897,36 @@ unscale_chain <- function(chain, time_scale) {
 # Posterior kernel plotting
 ################################################################################
 
-#' Plot the posterior marked-Hawkes excitation kernel
+#' Plot the posterior excitation kernel
 #'
-#' Produces a posterior-mean-and-credible-band plot and/or a "spaghetti" plot
-#' of individual posterior draws for the Hawkes excitation kernel with either 
-#' the step or piecewise-linear basis function. 
+#' Plots the posterior mean and credible band, posterior draws, or both for
+#' a step or piecewise-linear Hawkes excitation kernel.
 #'
-#' Posterior draws are combined from either the raw list of chain objects
-#' returned by \code{run_mcmc()} or an already row-bound matrix of draws.
-#' Computation is vectorised over posterior draws: the function loops over
-#' grid points in \code{x_grid} (typically a few hundred) rather than over
-#' posterior draws (which can number in the tens of thousands across chains
-#' and iterations), since each grid-point iteration is then a single
-#' vectorised \code{n_draws x K} matrix operation.
+#' @param chains Posterior draws as either a list of chains from
+#'   \code{\link{run_mcmc}} or a row-bound samples matrix.
+#' @param kernel Character; \code{"step"} or \code{"pwlin"}.
+#' @param x_grid Numeric vector; evaluation grid. If \code{NULL}, constructed
+#'   from \code{x_max} and \code{n_grid}.
+#' @param x_max Numeric; upper grid limit when \code{x_grid = NULL}. If
+#'   \code{NULL}, chosen from posterior kernel tail mass.
+#' @param n_grid Integer; number of automatically generated grid points.
+#' @param ci_level Numeric in (0, 1); posterior credible-band level.
+#' @param n_spaghetti Integer; number of posterior draws to plot.
+#' @param true_kernel Function or \code{NULL}; optional reference kernel to
+#'   overlay.
+#' @param panel Character; \code{"both"}, \code{"summary"}, or
+#'   \code{"spaghetti"}.
+#' @param legend Logical; whether to display the plot legend.
+#' @param seed Integer or \code{NULL}; seed for posterior-draw subsampling.
 #'
-#' @param chains Either (a) the list returned in \code{run_mcmc()$chains},
-#'   i.e. a list of chain objects each containing a \code{$samples} matrix,
-#'   or (b) an already row-bound matrix of posterior draws with columns
-#'   \code{theta1, ..., thetaK}, \code{v1, ..., v(K-1)}, and \code{A}.
-#' @param kernel Character; \code{"step"} or \code{"pwlin"}. Partially
-#'   matched via \code{match.arg}.
-#' @param x_grid Optional numeric vector of x-values at which to evaluate the
-#'   kernel. If \code{NULL} (the default), a regular grid of length
-#'   \code{n_grid} from 0 to \code{x_max} is constructed.
-#' @param x_max Upper limit for the automatically constructed x grid, used
-#'   only when \code{x_grid} is \code{NULL}. Defaults to the 99th percentile
-#'   of all posterior \code{theta} draws.
-#' @param n_grid Integer; number of points in the automatically constructed
-#'   x grid, used only when \code{x_grid} is \code{NULL}. Default 200.
-#' @param ci_level Numeric in (0, 1); width of the posterior credible band
-#'   shown in the summary panel, e.g. \code{0.90} gives the 5th/95th
-#'   percentiles. Default 0.90.
-#' @param n_spaghetti Integer; number of individual posterior draws to
-#'   overlay in the spaghetti panel, subsampled (without replacement) from
-#'   all available draws for readability. Default 500.
-#' @param true_kernel Optional function of \code{x} giving a reference or
-#'   true kernel to overlay in red on the relevant panel(s), e.g.
-#'   \code{function(x) 0.6 * dunif(x)}. Default \code{NULL} (no overlay).
-#' @param panel Character; which panel(s) to draw: \code{"both"} (default),
-#'   \code{"summary"} (posterior mean + credible band only), or
-#'   \code{"spaghetti"} (individual draws only).
-#' @param legend Boolean; Display legend
-#' @param seed Optional integer seed for the spaghetti-panel subsampling, for
-#'   reproducible figures. Default \code{NULL} (no seed set).
-#'
-#' @return Invisibly, a list with components:
-#'   \describe{
-#'     \item{x_grid}{The grid of x-values the kernel was evaluated at.}
-#'     \item{kernel_draws}{An \code{n_draws x length(x_grid)} matrix of the
-#'       kernel evaluated at every posterior draw and grid point.}
-#'     \item{kernel_mean}{Posterior mean of the kernel at each grid point.}
-#'     \item{kernel_lower, kernel_upper}{Posterior credible band bounds at
-#'       each grid point, per \code{ci_level}.}
-#'   }
-#'   The plot(s) are drawn as a side effect.
+#' @return Invisibly returns a list containing \code{x_grid},
+#'   \code{kernel_draws}, \code{kernel_mean}, \code{kernel_lower}, and
+#'   \code{kernel_upper}.
 #'
 #' @examples
 #' \dontrun{
-#' result <- run_mcmc(times, marks, T_max, kernel = "pwlin", K = 10)
-#'
-#' # directly from run_mcmc()'s output list of chains:
-#' plot_hawkes_kernel(result$chains, kernel = "pwlin",
-#'                     true_kernel = function(x) 0.6 * dunif(x))
-#'
-#' # or from an already row-bound matrix:
-#' chains_matrix <- do.call(rbind, lapply(result$chains, `[[`, "samples"))
-#' plot_hawkes_kernel(chains_matrix, kernel = "pwlin", n_spaghetti = 500,
-#'                     seed = 1, true_kernel = function(x) 0.6 * dunif(x))
-#'
-#' # summary panel only, custom grid:
-#' plot_hawkes_kernel(chains_matrix, kernel = "pwlin", panel = "summary",
-#'                     x_grid = seq(0, 5, length.out = 300))
+#' fit <- run_mcmc(times, marks, T_max, kernel = "pwlin")
+#' plot_hawkes_kernel(fit$chains, kernel = "pwlin")
 #' }
 #'
 #' @export
@@ -964,6 +943,7 @@ plot_hawkes_kernel <- function(
   legend = TRUE,
   seed = NULL
 ) {
+  
   kernel <- match.arg(kernel)
   panel  <- match.arg(panel)
   
@@ -1005,11 +985,56 @@ plot_hawkes_kernel <- function(
     norm_const <- 0.5 * rowSums(W_raw * Theta^2)
   }
   W <- W_raw / norm_const  
-  
+
   # ---- build the x grid ------------------------------------------------------
+  # if no x_grid given, use (0, x_max) with n_grid points (200 default)
   if (is.null(x_grid)) {
+    # if no x_max, calculate the point at which no more than 5% of kernel mass
+    # is left out, (ci_level)% of the time. i.e. for default ci_level of 0.90, 
+    # the plot range will contain at least 95% of the mass 90% of the time
     if (is.null(x_max)) {
-      x_max <- as.numeric(quantile(Theta, 0.99))
+      tail_tol = 0.05  # 5% - fraction of kernel mass willing to leave out
+      
+      # Find x_max for each posterior draw such that 
+      # P_kernel(T > x_max) <= tail_tol.
+      x_max_draw <- numeric(n_draws)
+      for (i in seq_len(n_draws)) {
+        w_i <- W_raw[i, ]
+        theta_i <- Theta[i, ]
+        
+        # Kernel normalising constant
+        if (kernel == "step") {
+          C_i <- sum(w_i * theta_i)
+        } else {
+          C_i <- 0.5 * sum(w_i * theta_i^2)
+        }
+        
+        # Tail mass of the normalised kernel at x
+        tail_mass <- function(x) {
+          if (kernel == "step") {
+            # Integral_x^infinity (theta_k - x)_+
+            # weighted by w_k
+            sum(w_i * pmax(theta_i - x, 0)) / C_i
+          } else {
+            # For the piecewise-linear kernel:
+            # integral_x^theta (theta - t) dt
+            # = 0.5 * (theta - x)^2
+            sum(w_i * 0.5 * pmax(theta_i - x, 0)^2) / C_i
+          }
+        }
+        
+        # At x = 0 the tail mass should be 1.
+        # At x = max(theta) it is 0.
+        x_max_draw[i] <- uniroot(
+          function(x) tail_mass(x) - tail_tol,
+          interval = c(0, max(theta_i)),
+          tol = 1e-8
+        )$root
+      }
+      
+      # Use a high posterior quantile so that the plotting range
+      # covers essentially all posterior draws.
+      x_max <- as.numeric(quantile(x_max_draw, ci_level))
     }
     x_grid <- seq(0, x_max, length.out = n_grid)
   }
@@ -1138,32 +1163,22 @@ plot_hawkes_kernel <- function(
 # exponential mark-productivity: A * exp(beta * mark)
 ################################################################################
 
-#' Ground-process compensator for the marked Hawkes process
+#' Compute the marked-Hawkes ground-process compensator
 #'
-#' Computes \eqn{\Lambda(t) = \int_0^t \lambda_g^*(s)\,ds}, the integrated
-#' ground intensity up to time \code{t}, for use in residual/goodness-of-fit
-#' diagnostics via the random time change theorem.
+#' Computes the integrated ground intensity \eqn{\Lambda(t)} up to time
+#' \code{t} for residual and goodness-of-fit diagnostics.
 #'
-#' @param t Numeric scalar; time at which to evaluate the compensator.
-#' @param times Numeric vector of event times, sorted ascending.
-#' @param marks Numeric vector, same length as \code{times}; event marks.
-#' @param params Numeric vector \code{c(lambda0, A, theta_1, ..., theta_K, 
-#'   v_1, ..., v_{K-1})} -- e.g. one row/summary of the posterior
-#'   samples matrix restricted to these columns. Should be named (as
-#'   \code{colMeans()} or a single row of a samples matrix would be) so
-#'   \code{theta}/\code{v} are matched by name rather than position.
+#' @param t Numeric; evaluation time.
+#' @param times Numeric vector; sorted event times.
+#' @param marks Numeric vector; event marks.
+#' @param params Named numeric vector; posterior parameter values.
 #' @param K Integer; number of mixture components.
 #' @param kernel Character; \code{"step"} or \code{"pwlin"}.
-#' @param mark_productivity Character; \code{"linear"} or \code{"exponential"}
-#' @param n_before Optional integer; number of events strictly before
-#'   \code{t}. If \code{NULL} (the default), computed as
-#'   \code{sum(times < t)}. Passing this in directly (as
-#'   \code{\link{hawkes_resid}} does, since it always evaluates at
-#'   \code{t = times[i]} and so knows \code{n_before = i - 1} without a
-#'   scan) avoids an O(n) scan per call -- useful when \code{compensator()}
-#'   is called many times, e.g. across many posterior draws.
+#' @param mark_productivity Character; \code{"linear"} or \code{"exponential"}.
+#' @param n_before Integer or \code{NULL}; number of events before \code{t}.
+#'   If \code{NULL}, computed from \code{times}.
 #'
-#' @return Numeric scalar, \eqn{\Lambda(t)}.
+#' @return Numeric scalar; \eqn{\Lambda(t)}.
 #'
 #' @export
 compensator <- function(t, times, marks, params, K, kernel = c("step", "pwlin"),
@@ -1238,24 +1253,18 @@ compensator <- function(t, times, marks, params, K, kernel = c("step", "pwlin"),
 }
 
 
-#' Compensator values at each observed event time
+#' Compute compensators at observed event times
 #'
-#' Evaluates \code{\link{compensator}} at every event time \code{times[i]},
-#' returning the sequence \eqn{\Lambda(T_1), \ldots, \Lambda(T_n)}. Under a
-#' correctly specified model, these are the arrival times of a unit-rate
-#' Poisson process, so \code{diff(c(0, tau))} should look like iid
-#' \eqn{\text{Exp}(1)} residuals -- this function returns the raw
-#' compensator values, not the differenced residuals, so take
-#' \code{diff()} yourself if that's what you need next.
+#' Evaluates the ground-process compensator at each observed event time.
 #'
-#' @param times Numeric vector of event times, sorted ascending.
-#' @param marks Numeric vector, same length as \code{times}; event marks.
-#' @param params Numeric vector, as in \code{\link{compensator}}.
+#' @param times Numeric vector; sorted event times.
+#' @param marks Numeric vector; event marks.
+#' @param params Named numeric vector; posterior parameter values.
 #' @param K Integer; number of mixture components.
 #' @param kernel Character; \code{"step"} or \code{"pwlin"}.
+#' @param mark_productivity Character; \code{"linear"} or \code{"exponential"}.
 #'
-#' @return Numeric vector, same length as \code{times}: \eqn{\Lambda(T_i)}
-#'   for each \code{i}.
+#' @return Numeric vector of \eqn{\Lambda(T_i)} values.
 #'
 #' @export
 hawkes_resid <- function(times, marks, params, K, kernel = c("step", "pwlin"), 
@@ -1275,49 +1284,22 @@ hawkes_resid <- function(times, marks, params, K, kernel = c("step", "pwlin"),
 }
 
 
-#' Posterior-predictive compensator, averaged across posterior draws
+#' Compute posterior-averaged Hawkes compensators
 #'
-#' Rather than plugging \code{colMeans()} of the posterior samples into a
-#' single \code{\link{compensator}} evaluation, this evaluates the
-#' compensator separately for each of a subsample of posterior draws, then
-#' averages the resulting \eqn{\Lambda(T_i)} sequences pointwise across
-#' draws. This matters specifically for mixture-component parameters
-#' (\code{theta_k}, \code{v_k}): they are only weakly identified
-#' individually (exchangeable across the K components, prone to label
-#' switching across MCMC iterations), so averaging them directly in
-#' parameter space can reconstruct a kernel that doesn't correspond to any
-#' actual posterior draw. Averaging the compensator *values* instead
-#' (function-space averaging) is the same principle already used by
-#' \code{\link{plot_hawkes_kernel}}, and is robust to this.
+#' Evaluates the compensator for a subsample of posterior draws and averages
+#' the resulting values at each observed event time.
 #'
-#' @param times Numeric vector of event times, sorted ascending.
-#' @param marks Numeric vector, same length as \code{times}; event marks.
-#' @param chains Either the list returned in \code{run_mcmc()$chains}, or
-#'   an already row-bound matrix of posterior draws (as in
-#'   \code{\link{plot_hawkes_kernel}}).
+#' @param times Numeric vector; sorted event times.
+#' @param marks Numeric vector; event marks.
+#' @param chains Posterior draws as a chain list or samples matrix.
 #' @param K Integer; number of mixture components.
 #' @param kernel Character; \code{"step"} or \code{"pwlin"}.
-#' @param n_draws Integer; number of posterior draws to subsample (without
-#'   replacement) for the average. Default 200 -- each draw costs a full
-#'   \code{\link{hawkes_resid}} evaluation (O(n) compensator calls, each
-#'   O(K) after the \code{n_before} fix above), so this trades precision
-#'   for runtime on large event catalogs.
-#' @param seed Optional integer seed for reproducible subsampling.
+#' @param mark_productivity Character; \code{"linear"} or \code{"exponential"}.
+#' @param n_draws Integer; number of posterior draws to use. Default 200.
+#' @param seed Integer or \code{NULL}; seed for draw subsampling.
 #'
-#' @return A list with:
-#'   \describe{
-#'     \item{tau_mean}{Numeric vector, same length as \code{times}: the
-#'       posterior-predictive-averaged \eqn{\Lambda(T_i)} at each event
-#'       time. Feed \code{diff(c(0, tau_mean))} into your existing Q-Q /
-#'       K-S code exactly as you would \code{\link{hawkes_resid}}'s
-#'       output.}
-#'     \item{tau_draws}{\code{n_draws x length(times)} matrix; each row is
-#'       one draw's own (self-consistent, not averaged) \eqn{\Lambda(T_i)}
-#'       sequence -- useful for a spaghetti-style residual plot showing
-#'       posterior uncertainty in the diagnostic itself.}
-#'     \item{draw_idx}{Integer vector; which rows of the combined samples
-#'       matrix were used.}
-#'   }
+#' @return List containing \code{tau_mean}, \code{tau_draws}, and
+#'   \code{draw_idx}.
 #'
 #' @export
 hawkes_resid_posterior <- function(
@@ -1361,38 +1343,20 @@ hawkes_resid_posterior <- function(
   )
 }
 
-#' Plot posterior-predictive residual Q-Q diagnostic
+#' Plot the posterior-predictive residual Q-Q diagnostic
 #'
-#' Plots a residual Q-Q diagnostic from the output of
-#' \code{\link{hawkes_resid_posterior}}, showing how posterior parameter
-#' uncertainty (evaluated on the fixed, observed event sequence) propagates
-#' into the residual diagnostic itself. Three display styles are available: 
-#' a shaded credible ribbon (\code{"ribbon"}, a dashed-line credible band 
-#' (\code{"band"}), or raw per-draw spaghetti lines (\code{"spaghetti"} -- shows 
-#' the full draw-by-draw variation.
+#' Plots Exp(1) Q-Q diagnostics from posterior compensator draws using a
+#' credible ribbon, credible band, or draw-by-draw spaghetti plot.
 #'
-#' Note that the resulting band/ribbon reflects posterior *parameter*
-#' uncertainty propagated onto the observed catalog (\code{times}/
-#' \code{marks} are fixed; only the parameter draw varies).
-#'
-#' @param tau_draws \code{n_draws x n_events} matrix, as returned by
-#'   \code{hawkes_resid_posterior()$tau_draws}.
-#' @param tau_mean Optional numeric vector of length \code{n_events} (e.g.
-#'   \code{hawkes_resid_posterior()$tau_mean}); if supplied, its residuals
-#'   are overlaid as points on top.
-#' @param style Character; \code{"ribbon"} (default), \code{"band"}, or
-#'   \code{"spaghetti"}.
-#' @param band_level Numeric in (0, 1); credible band/ribbon width for
-#'   \code{style \%in\% c("ribbon", "band")}, e.g. \code{0.90} gives the
-#'   5th/95th percentiles. Default 0.90.
-#' @param ribbon_col Colour for the shaded ribbon when
-#'   \code{style = "ribbon"}. Default a light grey, chosen to stay legible
-#'   in greyscale printing.
+#' @param tau_draws Numeric matrix; compensator values from posterior draws.
+#' @param tau_mean Numeric vector or \code{NULL}; optional posterior-mean
+#'   compensator values to overlay.
+#' @param style Character; \code{"ribbon"}, \code{"band"}, or \code{"spaghetti"}.
+#' @param band_level Numeric in (0, 1); credible-band level. Default 0.90.
+#' @param ribbon_col Character; ribbon colour when \code{style = "ribbon"}.
 #' @param main Character; plot title.
 #'
-#' @return Invisibly, a list with \code{theoretical_q} (the shared
-#'   theoretical quantiles) and \code{gaps_matrix} (the \code{n_events x
-#'   n_draws} matrix of sorted per-draw gaps used for plotting).
+#' @return Invisibly returns \code{theoretical_q} and \code{gaps_matrix}.
 #'
 #' @export
 plot_hawkes_resid_qq <- function(tau_draws, tau_mean = NULL,
