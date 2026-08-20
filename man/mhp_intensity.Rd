@@ -2,7 +2,7 @@
 % Please edit documentation in R/sim-helpers.R
 \name{mhp_intensity}
 \alias{mhp_intensity}
-\title{Ground intensity of the marked Hawkes process, for use with sim_mhp()}
+\title{Evaluate the ground intensity of a marked Hawkes process}
 \usage{
 mhp_intensity(
   t,
@@ -21,45 +21,32 @@ mhp_intensity(
 \arguments{
 \item{t}{Numeric scalar; current time.}
 
-\item{times}{Numeric vector; event times strictly before \code{t}
-(supplied by \code{sim_mhp()}'s thinning loop).}
+\item{times}{Numeric vector; previous event times.}
 
-\item{marks}{Numeric vector, same length as \code{times}; marks of those
-events.}
+\item{marks}{Numeric vector; marks corresponding to \code{times}.}
 
 \item{lambda0}{Numeric scalar; baseline intensity.}
 
 \item{A}{Numeric scalar; mark productivity parameter.}
 
-\item{beta}{Numeric scalar; optional mark productivity parameter, not
-required if \code{mark_productivity = "linear"}}
+\item{beta}{Numeric scalar; exponential mark-productivity parameter.
+Ignored for \code{"linear"} productivity.}
 
-\item{theta}{Numeric vector of length K; kernel atom locations.}
+\item{theta}{Numeric vector; kernel atom locations.}
 
-\item{w}{Numeric vector of length K; raw stick-breaking weights (summing
-to 1) -- not yet divided by \code{C}.}
+\item{w}{Numeric vector; raw stick-breaking weights.}
 
-\item{C}{Numeric scalar; kernel normalising constant (as in
-\code{\link{run_sampler}}'s \code{C_fun}).}
+\item{C}{Numeric scalar; kernel normalising constant.}
 
-\item{kernel}{Character; \code{"step"} or \code{"pwlin"}.}
+\item{kernel}{Character; kernel type, \code{"step"} or \code{"pwlin"}.}
 
-\item{mark_productivity}{Character; \code{"linear"} or \code{"exponential"}}
+\item{mark_productivity}{Character; mark-productivity form,
+\code{"linear"} or \code{"exponential"}.}
 }
 \value{
-Numeric scalar; the ground intensity at \code{t}.
+Numeric scalar; conditional ground intensity at \code{t}.
 }
 \description{
-Computes \eqn{\lambda_0 + \sum_j A e^{\beta M_j} f(t - T_j)}, the ground
-intensity at time \code{t} given event history \code{(times, marks)}.
-Matches the same kernel-evaluation logic as \code{\link{update_zs}} and
-\code{\link{compensator}} (basis functions evaluated via \code{outer()}
-over history x components, then combined via the raw stick-breaking
-weights \code{w} and normalising constant \code{C}), just returning the
-intensity itself rather than an integrated/compensator form.
-}
-\details{
-Intended to be passed as \code{sim_mhp()}'s \code{intensity_func}
-argument, not called directly in most workflows -- see
-\code{\link{simulate_mhp}}.
+Computes the conditional ground intensity at time \code{t} for use with
+\code{\link{sim_mhp}}.
 }

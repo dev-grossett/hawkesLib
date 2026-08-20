@@ -7,4 +7,4 @@ Description: Model marked Hawkes process data with non-parametric kernels define
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-Config/roxygen2/version: 8.0.0
+Config/roxygen2/version: 8.1.0

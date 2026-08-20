@@ -2,7 +2,7 @@
 % Please edit documentation in R/marked_hawkes_npb.R
 \name{run_mcmc}
 \alias{run_mcmc}
-\title{Fit a marked Hawkes process with a Dirichlet process mixture kernel}
+\title{Fit a marked Hawkes process with a DP mixture excitation kernel}
 \usage{
 run_mcmc(
   times,
@@ -18,98 +18,77 @@ run_mcmc(
   proposal_sds = default_proposal_sds(),
   scale_time = TRUE,
   save_path = NULL,
-  progress = FALSE
+  progress = FALSE,
+  adapt = TRUE,
+  adapt_start = 1,
+  adapt_end = floor(n_iter/2),
+  adapt_interval = 100,
+  target_accept = 0.3
 )
 }
 \arguments{
-\item{times}{Numeric vector of event times, sorted ascending, on their
-original (unscaled) time unit.}
+\item{times}{Numeric vector; sorted event times.}
 
-\item{marks}{Numeric vector, same length as \code{times}; the mark
-(e.g. magnitude) of each event.}
+\item{marks}{Numeric vector; event marks.}
 
-\item{T_max}{Numeric scalar; length of the observation window, on the
-same original time unit as \code{times}.}
+\item{T_max}{Numeric; observation-window length.}
 
-\item{kernel}{Character; \code{"step"} or \code{"pwlin"}. Partially
-matched via \code{match.arg}.}
+\item{kernel}{Character; \code{"step"} or \code{"pwlin"}.}
 
-\item{mark_productivity}{Character; \code{"linear"} or \code{"exponential"}}
+\item{mark_productivity}{Character; \code{"linear"} or \code{"exponential"}.}
 
-\item{K}{Integer; truncation level of the stick-breaking mixture (number
-of mixture components). Default 20.}
+\item{K}{Integer; number of mixture components. Default 20.}
 
-\item{n_chains}{Integer; number of independent MCMC chains to run in
-parallel. Default 4.}
+\item{n_chains}{Integer; number of parallel MCMC chains. Default 4.}
 
-\item{n_iter}{Integer; number of MCMC iterations per chain. Default 8000.}
+\item{n_iter}{Integer; iterations per chain. Default 8000.}
 
-\item{seed}{Integer; seed for \code{parallel::clusterSetRNGStream}, giving
-reproducible, independent RNG streams across chains. Default 123.}
+\item{seed}{Integer; random-number seed. Default 123.}
 
-\item{prior_params}{A list of prior hyperparameters; see
-\code{\link{default_prior_params}}. Defaults to
-\code{default_prior_params()}.}
+\item{prior_params}{List; prior hyperparameters. Defaults to
+\code{\link{default_prior_params}}().}
 
-\item{proposal_sds}{A list of Metropolis random-walk proposal standard
-deviations; see \code{\link{default_proposal_sds}}. Defaults to
-\code{default_proposal_sds()}.}
+\item{proposal_sds}{List; Metropolis proposal standard deviations. Defaults
+to \code{\link{default_proposal_sds}}().}
 
-\item{scale_time}{Logical; if \code{TRUE} (the default), rescale time so
-the baseline intensity is roughly 1 before fitting, then transform
-posterior samples back to the original scale.}
+\item{scale_time}{Logical; whether to rescale time before fitting. Default
+\code{TRUE}.}
 
-\item{save_path}{Optional file path; if supplied, the fitted chains are
-saved to this path via \code{saveRDS} as a side effect.}
+\item{save_path}{Character or \code{NULL}; optional path for saving chains
+with \code{saveRDS}.}
 
-\item{progress}{Logical; if \code{TRUE}, display a text progress bar for
-each chain. Default \code{FALSE} (recommended when running many chains
-in parallel, since progress bars from parallel workers do not display
-in the calling session).}
+\item{progress}{Logical; whether workers display progress bars. Default
+\code{FALSE}.}
+
+\item{adapt}{Logical; whether to adapt proposal standard deviations.}
+
+\item{adapt_start}{Integer; first iteration eligible for adaptation.}
+
+\item{adapt_end}{Integer; last iteration eligible for adaptation.}
+
+\item{adapt_interval}{Integer; iterations between adaptations.}
+
+\item{target_accept}{Numeric; target Metropolis acceptance rate. Default 0.30.}
 }
 \value{
-A list with:
-\describe{
-\item{chains}{A list of length \code{n_chains}, each element being
-the list returned by \code{\link{run_sampler}} for that chain
-(already transformed back to the original time scale if
-\code{scale_time = TRUE}).}
-\item{time_scale}{Numeric scalar; the scaling factor applied to time
-(1 if \code{scale_time = FALSE}).}
-\item{settings}{A list recording the call's configuration
-(\code{T_max}, \code{n_events}, \code{kernel}, \code{K},
-\code{n_chains}, \code{n_iter}, \code{seed}, \code{scale_time}).}
-\item{prior_params, proposal_sds, init_list}{The prior
-hyperparameters, proposal standard deviations, and per-chain
-initial values used to fit the model.}
-}
+List containing the fitted \code{chains}, \code{time_scale},
+\code{settings}, \code{prior_params}, \code{proposal_sds}, and
+\code{init_list}.
 }
 \description{
-Runs \code{n_chains} independent Metropolis-within-Gibbs MCMC chains (in
-parallel, via a \code{parallel::makeCluster} PSOCK cluster) for a marked
-Hawkes process whose excitation kernel is a K-component truncated
-stick-breaking (Dirichlet process) mixture of step or piecewise-linear
-basis functions, and whose offspring productivity scales either linearly or
-exponentially with each parent's mark. This is the main user-facing entry
-point; \code{\link{run_sampler}} and friends are internal workers called once
-per chain.
+Runs independent parallel MCMC chains for a marked Hawkes process with a
+truncated stick-breaking mixture of step or piecewise-linear kernels and
+linear or exponential mark-dependent productivity.
 }
 \details{
-Event times are optionally rescaled before fitting (\code{scale_time =
-TRUE}, the default) so that the baseline intensity is roughly of order 1,
-which helps the default proposal standard deviations behave sensibly
-across data sets with very different time units or event rates. Marks are
-never rescaled -- they are a separate physical quantity unrelated to
-time. Posterior samples are transformed back to the original time scale
-automatically before being returned (via \code{\link{unscale_chain}}), so
-downstream code never needs to know whether scaling was used.
+Event times can be rescaled for fitting and are automatically transformed
+back to the original time scale in the returned posterior samples.
 }
 \examples{
 \dontrun{
-result <- run_mcmc(times, marks, T_max, kernel = "pwlin", 
-                   mark_productivity = "linear", K = 10, n_chains = 4, 
-                   n_iter = 8000)
-result$chains[[1]]$acceptance_rates
+fit <- run_mcmc(times, marks, T_max, kernel = "pwlin",
+                mark_productivity = "linear")
+fit$chains[[1]]$acceptance_rates
 }
 
 }

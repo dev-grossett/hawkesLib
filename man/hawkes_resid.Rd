@@ -2,7 +2,7 @@
 % Please edit documentation in R/marked_hawkes_npb.R
 \name{hawkes_resid}
 \alias{hawkes_resid}
-\title{Compensator values at each observed event time}
+\title{Compute compensators at observed event times}
 \usage{
 hawkes_resid(
   times,
@@ -14,26 +14,21 @@ hawkes_resid(
 )
 }
 \arguments{
-\item{times}{Numeric vector of event times, sorted ascending.}
+\item{times}{Numeric vector; sorted event times.}
 
-\item{marks}{Numeric vector, same length as \code{times}; event marks.}
+\item{marks}{Numeric vector; event marks.}
 
-\item{params}{Numeric vector, as in \code{\link{compensator}}.}
+\item{params}{Named numeric vector; posterior parameter values.}
 
 \item{K}{Integer; number of mixture components.}
 
 \item{kernel}{Character; \code{"step"} or \code{"pwlin"}.}
+
+\item{mark_productivity}{Character; \code{"linear"} or \code{"exponential"}.}
 }
 \value{
-Numeric vector, same length as \code{times}: \eqn{\Lambda(T_i)}
-for each \code{i}.
+Numeric vector of \eqn{\Lambda(T_i)} values.
 }
 \description{
-Evaluates \code{\link{compensator}} at every event time \code{times[i]},
-returning the sequence \eqn{\Lambda(T_1), \ldots, \Lambda(T_n)}. Under a
-correctly specified model, these are the arrival times of a unit-rate
-Poisson process, so \code{diff(c(0, tau))} should look like iid
-\eqn{\text{Exp}(1)} residuals -- this function returns the raw
-compensator values, not the differenced residuals, so take
-\code{diff()} yourself if that's what you need next.
+Evaluates the ground-process compensator at each observed event time.
 }

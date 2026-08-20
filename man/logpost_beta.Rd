@@ -2,36 +2,27 @@
 % Please edit documentation in R/marked_hawkes_npb.R
 \name{logpost_beta}
 \alias{logpost_beta}
-\title{Full conditional log-posterior for the mark-productivity slope beta}
+\title{Log full conditional for the exponential mark-productivity slope}
 \usage{
 logpost_beta(beta, A, marks, sum_M_off, mu_beta, sd_beta)
 }
 \arguments{
-\item{beta}{Numeric scalar; proposed value of the mark-productivity
-slope.}
+\item{beta}{Numeric; proposed mark-productivity slope.}
 
-\item{A}{Numeric scalar; current productivity scale.}
+\item{A}{Numeric; productivity scale.}
 
-\item{marks}{Numeric vector of all event marks (every event, not just
-offspring -- every event can be a candidate parent).}
+\item{marks}{Numeric vector; event marks.}
 
-\item{sum_M_off}{Numeric scalar; sum of the parent's mark over every
-offspring event, i.e. \code{sum(marks[z[O_idx]])}.}
+\item{sum_M_off}{Numeric; sum of parent marks over offspring events.}
 
-\item{mu_beta}{Numeric scalar; mean of the Normal prior on \code{beta}.}
+\item{mu_beta}{Numeric; Normal prior mean.}
 
-\item{sd_beta}{Numeric scalar; standard deviation of the Normal prior on
-\code{beta}.}
+\item{sd_beta}{Numeric; Normal prior standard deviation.}
 }
 \value{
-Numeric scalar: the log full conditional density at \code{beta}.
+Numeric; log full conditional density at \code{beta}.
 }
 \description{
-Evaluates the (unnormalised) log full conditional of \code{beta}, for use
-in a Metropolis-within-Gibbs update. Unlike \code{theta_k}/\code{v_k},
-\code{beta} is already unconstrained (any sign is meaningful -- the data
-determines whether productivity increases or decreases with mark), so
-this uses a plain symmetric random-walk proposal on \code{beta} itself,
-with no transform or Jacobian needed.
+Evaluates the log full conditional of \code{beta}.
 }
 \keyword{internal}

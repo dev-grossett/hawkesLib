@@ -2,30 +2,21 @@
 % Please edit documentation in R/marked_hawkes_npb.R
 \name{unscale_chain}
 \alias{unscale_chain}
-\title{Transform a chain's posterior samples back to the original time scale}
+\title{Transform posterior samples back to the original time scale}
 \usage{
 unscale_chain(chain, time_scale)
 }
 \arguments{
-\item{chain}{A list as returned by \code{\link{run_sampler}}, containing
-a \code{$samples} matrix with columns \code{lambda0}, \code{A},
-\code{theta1...K}, \code{v1...(K-1)}, \code{alpha}, \code{phi},
-\code{gamma}.}
+\item{chain}{List; fitted chain returned by \code{\link{run_sampler}}.}
 
-\item{time_scale}{Numeric scalar; the scaling factor originally applied
-to time (i.e. \code{times_scaled = times / time_scale}).}
+\item{time_scale}{Numeric; time scaling factor used during fitting.}
 }
 \value{
-The input \code{chain} list, with \code{chain$samples}
-transformed back to the original time scale.
+The input chain with time-dependent posterior parameters restored
+to their original scale.
 }
 \description{
-Undoes the rescaling applied by \code{\link{run_mcmc}} when
-\code{scale_time = TRUE}: \code{lambda0} and \code{phi} are rates (events
-per unit time / inverse-time), so they are divided by \code{time_scale};
-the kernel atoms \code{theta1, ..., thetaK} are themselves time
-durations, so they are multiplied by \code{time_scale}. \code{A},
-\code{beta}, \code{v1, ..., v(K-1)}, \code{alpha}, and \code{gamma} are
-dimensionless or relate to marks rather than time, and are left unchanged.
+Reverses the time scaling applied by \code{\link{run_mcmc}} to rates and
+kernel atom locations.
 }
 \keyword{internal}

@@ -2,7 +2,7 @@
 % Please edit documentation in R/marked_hawkes_npb.R
 \name{run_sampler}
 \alias{run_sampler}
-\title{Run a single Metropolis-within-Gibbs marked-Hawkes MCMC chain}
+\title{Run one marked-Hawkes MCMC chain}
 \usage{
 run_sampler(
   times,
@@ -14,60 +14,61 @@ run_sampler(
   proposal_sds,
   kernel = c("step", "pwlin"),
   mark_productivity = c("linear", "exponential"),
-  progress = TRUE
+  progress = TRUE,
+  adapt = TRUE,
+  adapt_start = 1,
+  adapt_end = floor(n_iter/2),
+  adapt_interval = 100,
+  target_accept = 0.3
 )
 }
 \arguments{
-\item{times}{Numeric vector of event times, sorted ascending (already
-time-scaled if scaling is in use -- scaling itself is handled by
-\code{\link{run_mcmc}}, not here).}
+\item{times}{Numeric vector; sorted event times on the fitting time scale.}
 
-\item{marks}{Numeric vector, same length as \code{times}; the mark of
-each event (not time-scaled -- marks are a separate physical quantity).}
+\item{marks}{Numeric vector; event marks.}
 
-\item{T_max}{Numeric scalar; observation window length (already
-time-scaled, consistent with \code{times}).}
+\item{T_max}{Numeric; observation-window length on the fitting time scale.}
 
-\item{n_iter}{Integer; number of MCMC iterations to run.}
+\item{n_iter}{Integer; number of MCMC iterations.}
 
-\item{init}{A list giving the initial state, with elements
-\code{lambda0}, \code{A}, \code{theta} (length K), \code{v} (length
-K-1), \code{alpha}, \code{phi}, and \code{gamma}.}
+\item{init}{List; initial values for \code{lambda0}, \code{A}, \code{beta}
+(if exponential), \code{theta}, \code{v}, \code{alpha}, \code{phi}, and
+\code{gamma}.}
 
-\item{prior_params}{A list of prior hyperparameters; see
-\code{\link{default_prior_params}} for the expected names.}
+\item{prior_params}{List; prior hyperparameters, as returned by
+\code{\link{default_prior_params}}.}
 
-\item{proposal_sds}{A list of Metropolis random-walk proposal standard
-deviations; see \code{\link{default_proposal_sds}} for the expected
-names.}
+\item{proposal_sds}{List; Metropolis proposal standard deviations, as
+returned by \code{\link{default_proposal_sds}}.}
 
 \item{kernel}{Character; \code{"step"} or \code{"pwlin"}.}
 
-\item{progress}{Logical; if \code{TRUE}, display a text progress bar.}
+\item{mark_productivity}{Character; \code{"linear"} or \code{"exponential"}.}
+
+\item{progress}{Logical; whether to display a progress bar.}
+
+\item{adapt}{Logical; whether to adapt proposal standard deviations.}
+
+\item{adapt_start}{Integer; first iteration eligible for adaptation.}
+
+\item{adapt_end}{Integer; last iteration eligible for adaptation.}
+
+\item{adapt_interval}{Integer; number of iterations between adaptations.}
+
+\item{target_accept}{Numeric; target Metropolis acceptance rate.}
 }
 \value{
-A list with:
+List containing:
 \describe{
-\item{samples}{An \code{n_iter x (5 + K + (K-1))} matrix of posterior
-draws, with columns \code{lambda0}, \code{A}, \code{theta1...K},
-\code{v1...(K-1)}, \code{alpha}, \code{phi}, \code{gamma}.}
-\item{acceptance_rates}{Named numeric vector; overall Metropolis
-acceptance rate for the \code{theta} and \code{v} sweeps.}
-\item{n_immigrant}{Numeric vector of length \code{n_iter}; number of
-immigrant events sampled at each iteration.}
-\item{n_offspring}{Numeric vector of length \code{n_iter}; number of
-offspring events sampled at each iteration.}
+\item{samples}{Matrix of posterior draws.}
+\item{acceptance_rates}{Named acceptance rates for each Metropolis-updated parameter.}
+\item{n_immigrant}{Immigrant count at each iteration.}
+\item{n_offspring}{Offspring count at each iteration.}
+\item{tuned_proposal_sds}{Final adapted proposal standard deviations.}
 }
 }
 \description{
-Runs one chain of the sampler: at each iteration, resamples the latent
-branching structure and component allocations
-(\code{\link{update_zs}}), updates \code{lambda0}, \code{A}, \code{alpha},
-\code{phi}, and \code{gamma} via their conjugate Gamma full conditionals,
-and updates every \code{theta_k} and \code{v_k} via a
-Metropolis-within-Gibbs sweep using \code{\link{logpost_theta_k}} and
-\code{\link{logpost_v_k}}. This is an internal worker called once per
-chain (typically in parallel) by \code{\link{run_mcmc}}; end users should
-call \code{run_mcmc} directly rather than this function.
+Runs a Metropolis-within-Gibbs sampler for one marked Hawkes process chain.
+This is an internal worker called by \code{\link{run_mcmc}}.
 }
 \keyword{internal}

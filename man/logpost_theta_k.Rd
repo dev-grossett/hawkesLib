@@ -2,7 +2,7 @@
 % Please edit documentation in R/marked_hawkes_npb.R
 \name{logpost_theta_k}
 \alias{logpost_theta_k}
-\title{Full conditional log-posterior for a single kernel atom theta_k}
+\title{Log full conditional for a kernel atom}
 \usage{
 logpost_theta_k(
   log_theta_k,
@@ -19,53 +19,35 @@ logpost_theta_k(
 )
 }
 \arguments{
-\item{log_theta_k}{Numeric scalar; proposed value of \code{theta_k} on
-the log scale (this function samples on the log scale so a Gamma-type
-positive parameter can use a symmetric random-walk proposal).}
+\item{log_theta_k}{Numeric; proposed log atom location.}
 
-\item{k}{Integer; index of the component being updated.}
+\item{k}{Integer; component index.}
 
-\item{w}{Numeric vector of length K; current stick-breaking weights.}
+\item{w}{Numeric vector; mixture weights.}
 
-\item{theta}{Numeric vector of length K; current atom locations (entry
-\code{k} is overwritten internally by the proposed value).}
+\item{theta}{Numeric vector; current atom locations.}
 
-\item{phi}{Numeric scalar; rate parameter of the Gamma prior on
-\code{theta_k}.}
+\item{phi}{Numeric; Gamma prior rate for \code{theta_k}.}
 
-\item{times}{Numeric vector of all event times.}
+\item{times}{Numeric vector; event times.}
 
-\item{O_idx}{Integer vector; indices of offspring events (i.e.
-\code{which(z != 0)}).}
+\item{O_idx}{Integer vector; offspring-event indices.}
 
-\item{z}{Integer vector; parent index for each event (0 for immigrants).}
+\item{z}{Integer vector; parent indices.}
 
-\item{s}{Integer vector; mixture component allocation for each event
-(\code{NA} for immigrants).}
+\item{s}{Integer vector; kernel-component allocations.}
 
-\item{C_fun}{Function of \code{(w, theta)} returning the kernel
-normalising constant.}
+\item{C_fun}{Function; computes the kernel normalising constant from
+\code{w} and \code{theta}.}
 
 \item{kernel}{Character; \code{"step"} or \code{"pwlin"}.}
 }
 \value{
-Numeric scalar: the log full conditional density (posterior plus
-log-Jacobian of the log transform) at \code{log_theta_k}, or
-\code{-Inf} if the proposal is incompatible with an offspring event's
-observed waiting time.
+Numeric; log full conditional density, or \code{-Inf} for an
+invalid proposal.
 }
 \description{
-Evaluates the (unnormalised) log full conditional of \code{theta_k} on
-the log scale, for use in a Metropolis-within-Gibbs update. Only offspring
-events allocated to component \code{k} depend on \code{theta_k} through
-the kernel basis function; offspring allocated to other components are
-constant with respect to \code{theta_k} and are deliberately excluded from
-both the validity check and the log-density sum, so that an unrelated
-component's (in)validity can never leak a spurious \code{-Inf} into this
-component's Metropolis ratio. The normalising constant \code{C}, by
-contrast, genuinely depends on every component and is always recomputed
-in full. (Unaffected by marks/A/beta -- those only enter through
-\code{\link{update_zs}} and their own full conditionals, not through the
-kernel shape.)
+Evaluates the log full conditional of \code{theta_k} on the log scale,
+including the Jacobian of the log transformation.
 }
 \keyword{internal}

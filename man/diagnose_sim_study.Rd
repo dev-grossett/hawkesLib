@@ -2,21 +2,47 @@
 % Please edit documentation in R/sim-helpers.R
 \name{diagnose_sim_study}
 \alias{diagnose_sim_study}
-\title{Plot MCMC diagnostics for a simulation study replicate}
+\title{Diagnose MCMC convergence for a simulation-study replicate}
 \usage{
-diagnose_sim_study(study, R, start = 1, thin = 1, params = "all", ...)
+diagnose_sim_study(
+  study,
+  R,
+  start = 1,
+  thin = 1,
+  params = "all",
+  plot = FALSE,
+  lags = NULL,
+  ...
+)
 }
 \arguments{
-\item{study}{List; output from \code{run_simulation_study}.}
+\item{study}{List; output from \code{\link{run_simulation_study}}.}
 
-\item{R}{Integer; number of individual replicate to diagnose.}
+\item{R}{Integer; replicate number to diagnose.}
 
-\item{start}{Integer; first iteration of interest.}
+\item{start}{Integer; first iteration included in the diagnostics.}
 
-\item{thin}{Integer; the required interval between successive samples.}
+\item{thin}{Integer; thinning interval.}
 
-\item{...}{optional arguments to pass to MCMCvis::MCMCtrace}
+\item{params}{Character vector; parameters to include in the standard
+MCMC diagnostics, or \code{"all"}.}
+
+\item{plot}{Logical; whether to produce trace plots.}
+
+\item{lags}{Numeric vector or \code{NULL}; lag values at which to evaluate
+the kernel for convergence diagnostics.}
+
+\item{...}{Additional arguments passed to
+\code{MCMCvis::MCMCtrace}.}
+}
+\value{
+If \code{lags = NULL}, a parameter summary from
+\code{MCMCvis::MCMCsummary}. Otherwise, a list containing the parameter
+summary, kernel-specific Gelman-Rubin statistics, and the corresponding
+MCMC object.
 }
 \description{
-Plot MCMC diagnostics for a simulation study replicate
+Produces standard MCMC summaries and, optionally, trace plots. If
+\code{lags} is supplied, also computes Gelman-Rubin statistics for the
+posterior kernel evaluated at those lags.
 }

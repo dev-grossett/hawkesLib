@@ -6,7 +6,12 @@
 \usage{
 default_prior_params()
 }
+\value{
+Named list of prior hyperparameters for \code{lambda0}, \code{alpha},
+\code{phi}, \code{A}, \code{beta}, and \code{gamma}.
+}
 \description{
-Default prior hyperparameters
+Returns the default Gamma and Normal prior hyperparameters used by the
+marked-Hawkes sampler.
 }
 \keyword{internal}

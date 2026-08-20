@@ -2,7 +2,7 @@
 % Please edit documentation in R/marked_hawkes_npb.R
 \name{update_zs}
 \alias{update_zs}
-\title{Sample latent branching structure and mixture-component allocations}
+\title{Sample latent parent and kernel-component allocations}
 \usage{
 update_zs(
   lambda0,
@@ -18,45 +18,32 @@ update_zs(
 )
 }
 \arguments{
-\item{lambda0}{Numeric scalar; baseline (immigrant) intensity.}
+\item{lambda0}{Numeric; baseline intensity.}
 
-\item{A}{Numeric scalar; mark productivity parameter}
+\item{A}{Numeric; mark productivity scale.}
 
-\item{beta}{Numeric scalar; optional mark productivity parameter, not
-required if \code{mark_productivity = "linear"}}
+\item{beta}{Numeric; exponential mark-productivity slope, if required.}
 
-\item{w}{Numeric vector of length K; stick-breaking mixture weights
-(raw weights that sum to 1, as constructed by the caller).}
+\item{w}{Numeric vector; length-K mixture weights.}
 
-\item{C}{Numeric scalar; kernel normalising constant, e.g.
-\code{sum(w * theta)} (step) or \code{0.5 * sum(w * theta^2)} (pwlin).}
+\item{C}{Numeric; kernel normalising constant.}
 
-\item{theta}{Numeric vector of length K; kernel atom locations.}
+\item{theta}{Numeric vector; length-K kernel atom locations.}
 
-\item{times}{Numeric vector of event times, sorted ascending.}
+\item{times}{Numeric vector; sorted event times.}
 
-\item{marks}{Numeric vector, same length as \code{times}; the mark
-(e.g. magnitude) of each event.}
+\item{marks}{Numeric vector; event marks.}
 
 \item{kernel}{Character; \code{"step"} or \code{"pwlin"}.}
 
-\item{mark_productivity}{Character; \code{"linear"} or \code{"exponential"}}
+\item{mark_productivity}{Character; \code{"linear"} or \code{"exponential"}.}
 }
 \value{
-A list with:
-\describe{
-\item{z}{Integer vector, same length as \code{times}. \code{z[i] == 0}
-marks event \code{i} as an immigrant; otherwise \code{z[i]} is the
-index of event \code{i}'s parent.}
-\item{s}{Integer vector, same length as \code{times}. The mixture
-component that produced event \code{i}, or \code{NA} for
-immigrants.}
-}
+List with integer vectors \code{z} (parent indices, with 0 for
+immigrants) and \code{s} (kernel-component allocations).
 }
 \description{
-For each event, samples which prior event (if any) is its parent, and
-which mixture component of the excitation kernel produced it, via a
-single categorical draw over {immigrant, every valid (parent, component)
-pair}.
+Samples the parent event and mixture component for each event using
+a categorical draw over all valid immigrant and offspring assignments.
 }
 \keyword{internal}

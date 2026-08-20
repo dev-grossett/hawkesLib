@@ -2,7 +2,7 @@
 % Please edit documentation in R/sim-helpers.R
 \name{run_simulation_study}
 \alias{run_simulation_study}
-\title{Run a full simulation-study scenario (many replicates)}
+\title{Run a marked Hawkes process simulation study}
 \usage{
 run_simulation_study(
   T_max,
@@ -23,80 +23,58 @@ run_simulation_study(
 )
 }
 \arguments{
-\item{T_max}{Numeric scalar; simulation/fit window length, shared across
-replicates.}
+\item{T_max}{Numeric scalar; simulation and fitting window length.}
 
-\item{true_params}{A list as in \code{\link{simulate_mhp}}.}
+\item{true_params}{List of true simulation parameters.}
 
-\item{kernel}{Character; \code{"step"} or \code{"pwlin"}.}
+\item{kernel}{Character; kernel type, \code{"step"} or \code{"pwlin"}.}
 
-\item{mark_productivity}{Character; \code{"linear"} or \code{"exponential"}.}
+\item{mark_productivity}{Character; mark-productivity form,
+\code{"linear"} or \code{"exponential"}.}
 
-\item{K}{Integer; truncation level for refitting.}
+\item{K}{Integer; number of kernel components used when fitting.}
 
-\item{R}{Integer; number of replicates. Default 20.}
+\item{R}{Integer; number of simulation replicates.}
 
-\item{n_chains, n_iter}{As in \code{\link{run_mhp_replicate}}.}
+\item{n_chains}{Integer; number of MCMC chains per replicate.}
 
-\item{base_seed}{Integer; replicate \code{r} uses seed
-\code{base_seed + r} for both simulation and fitting.}
+\item{n_iter}{Integer; number of MCMC iterations per chain.}
 
-\item{prior_params, proposal_sds}{As in \code{\link{run_mcmc}}.}
+\item{n_burn}{Integer or \code{NULL}; number of initial samples to discard
+from each chain before summarising.}
 
-\item{ci_level}{Numeric in (0, 1); credible interval width used for the
-coverage check. Default 0.90.}
+\item{base_seed}{Integer; base seed used to initialise each replicate.}
 
-\item{progress}{Logical; passed through to each replicate's
-\code{\link{run_mcmc}} call.}
+\item{prior_params}{List of prior parameters passed to \code{\link{run_mcmc}}.}
 
-\item{verbose}{Logical; print replicate progress to the console.}
+\item{proposal_sds}{List of proposal standard deviations passed to
+\code{\link{run_mcmc}}.}
+
+\item{ci_level}{Numeric in \code{(0, 1)}; credible interval level.}
+
+\item{progress}{Logical; whether to display MCMC progress.}
+
+\item{verbose}{Logical; whether to print replicate progress.}
 }
 \value{
-A list with:
+A list containing:
 \describe{
-\item{summary}{A data frame: one row per parameter, with
-\code{true_value}, \code{mean_est} (mean of posterior means across
-replicates), \code{bias}, \code{rmse}, and \code{coverage} (empirical
-fraction of replicates whose \code{ci_level} credible interval
-contained the true value).}
-\item{mean_mat, lower_mat, upper_mat}{\code{R x 4} matrices of
-per-replicate posterior mean / lower / upper credible bound, for
-\code{lambda0, A, beta, gamma}.}
-\item{results}{List of length \code{R} (successful replicates only),
-each with \code{$fit} -- useful for e.g. picking one replicate for
-a kernel recovery plot.}
-\item{true_params, kernel, ci_level}{Echoed back for convenience.}
+\item{summary}{Data frame containing the true value, mean estimate,
+bias, RMSE, and coverage for each scalar parameter.}
+\item{mean_mat}{Matrix of posterior means by replicate.}
+\item{lower_mat}{Matrix of lower credible bounds by replicate.}
+\item{upper_mat}{Matrix of upper credible bounds by replicate.}
+\item{results}{List of successful replicate results.}
+\item{true_params}{The supplied true parameter set.}
+\item{kernel}{The kernel type used in the study.}
+\item{ci_level}{The credible interval level used for coverage.}
 }
 }
 \description{
-Repeats \code{\link{run_mhp_replicate}} \code{R} times under a fixed
-\code{true_params} scenario, and summarises bias, RMSE, and credible
-interval coverage for \code{lambda0}, \code{A}, \code{beta}, \code{gamma}
--- the scalars with an unambiguous "true value" (kernel-shape recovery,
-for \code{theta}/\code{v}, is a separate check -- see the example below
-using \code{\link{true_kernel_fn}} with \code{\link{plot_hawkes_kernel}}
-on one replicate's fit, since that check is already robust to
-mixture-component label switching, whereas a per-component
-theta_k/v_k coverage table would not be).
+Simulates and fits \code{R} replicates under a fixed parameter scenario,
+then summarises bias, RMSE, and credible-interval coverage for the scalar
+model parameters.
 }
 \details{
-Replicates that error (simulation or fitting) are dropped with a warning
-rather than aborting the whole study.
-}
-\examples{
-\dontrun{
-true_params <- list(
-  lambda0 = 0.07, A = 0.08, beta = 1.5,       # comfortably subcritical
-  theta = sort(rexp(10, 0.03)), v = rbeta(9, 1, 0.5),
-  gamma = 2.2
-)
-study <- run_simulation_study(T_max = 500, true_params = true_params,
-                               kernel = "pwlin", K = 10, R = 20)
-study$summary
-
-# kernel-shape recovery, on one representative replicate
-plot_hawkes_kernel(study$results[[1]]$fit$chains, kernel = "pwlin",
-                    true_kernel = true_kernel_fn(true_params, "pwlin"))
-}
-
+Failed replicates are omitted with a warning.
 }

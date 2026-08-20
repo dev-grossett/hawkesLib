@@ -2,7 +2,7 @@
 % Please edit documentation in R/marked_hawkes_npb.R
 \name{plot_hawkes_resid_qq}
 \alias{plot_hawkes_resid_qq}
-\title{Plot posterior-predictive residual Q-Q diagnostic}
+\title{Plot the posterior-predictive residual Q-Q diagnostic}
 \usage{
 plot_hawkes_resid_qq(
   tau_draws,
@@ -14,42 +14,23 @@ plot_hawkes_resid_qq(
 )
 }
 \arguments{
-\item{tau_draws}{\code{n_draws x n_events} matrix, as returned by
-\code{hawkes_resid_posterior()$tau_draws}.}
+\item{tau_draws}{Numeric matrix; compensator values from posterior draws.}
 
-\item{tau_mean}{Optional numeric vector of length \code{n_events} (e.g.
-\code{hawkes_resid_posterior()$tau_mean}); if supplied, its residuals
-are overlaid as points on top.}
+\item{tau_mean}{Numeric vector or \code{NULL}; optional posterior-mean
+compensator values to overlay.}
 
-\item{style}{Character; \code{"ribbon"} (default), \code{"band"}, or
-\code{"spaghetti"}.}
+\item{style}{Character; \code{"ribbon"}, \code{"band"}, or \code{"spaghetti"}.}
 
-\item{band_level}{Numeric in (0, 1); credible band/ribbon width for
-\code{style \%in\% c("ribbon", "band")}, e.g. \code{0.90} gives the
-5th/95th percentiles. Default 0.90.}
+\item{band_level}{Numeric in (0, 1); credible-band level. Default 0.90.}
 
-\item{ribbon_col}{Colour for the shaded ribbon when
-\code{style = "ribbon"}. Default a light grey, chosen to stay legible
-in greyscale printing.}
+\item{ribbon_col}{Character; ribbon colour when \code{style = "ribbon"}.}
 
 \item{main}{Character; plot title.}
 }
 \value{
-Invisibly, a list with \code{theoretical_q} (the shared
-theoretical quantiles) and \code{gaps_matrix} (the \code{n_events x
-  n_draws} matrix of sorted per-draw gaps used for plotting).
+Invisibly returns \code{theoretical_q} and \code{gaps_matrix}.
 }
 \description{
-Plots a residual Q-Q diagnostic from the output of
-\code{\link{hawkes_resid_posterior}}, showing how posterior parameter
-uncertainty (evaluated on the fixed, observed event sequence) propagates
-into the residual diagnostic itself. Three display styles are available:
-a shaded credible ribbon (\code{"ribbon"}, a dashed-line credible band
-(\code{"band"}), or raw per-draw spaghetti lines (\code{"spaghetti"} -- shows
-the full draw-by-draw variation.
-}
-\details{
-Note that the resulting band/ribbon reflects posterior \emph{parameter}
-uncertainty propagated onto the observed catalog (\code{times}/
-\code{marks} are fixed; only the parameter draw varies).
+Plots Exp(1) Q-Q diagnostics from posterior compensator draws using a
+credible ribbon, credible band, or draw-by-draw spaghetti plot.
 }

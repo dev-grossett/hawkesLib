@@ -2,54 +2,35 @@
 % Please edit documentation in R/marked_hawkes_npb.R
 \name{logpost_v_k}
 \alias{logpost_v_k}
-\title{Full conditional log-posterior for a single stick-breaking variable v_k}
+\title{Log full conditional for a stick-breaking variable}
 \usage{
 logpost_v_k(logit_v_k, k, v, theta, alpha, n_comp, m_comp, n_off, C_fun)
 }
 \arguments{
-\item{logit_v_k}{Numeric scalar; proposed value of \code{v_k} on the
-logit scale.}
+\item{logit_v_k}{Numeric; proposed logit stick-breaking value.}
 
-\item{k}{Integer; index of the stick-breaking variable being updated
-(\code{1, ..., K-1}).}
+\item{k}{Integer; component index, from 1 to K-1.}
 
-\item{v}{Numeric vector of length K-1; current stick-breaking variables
-(entry \code{k} is overwritten internally by the proposed value).}
+\item{v}{Numeric vector; current stick-breaking variables.}
 
-\item{theta}{Numeric vector of length K; current atom locations.}
+\item{theta}{Numeric vector; kernel atom locations.}
 
-\item{alpha}{Numeric scalar; concentration parameter of the Beta(1,
-alpha) stick-breaking prior.}
+\item{alpha}{Numeric; Beta(1, alpha) concentration parameter.}
 
-\item{n_comp}{Integer vector of length K; number of offspring events
-allocated to exactly each component.}
+\item{n_comp}{Integer vector; offspring counts by component.}
 
-\item{m_comp}{Integer vector of length K; number of offspring events
-allocated to any component with a strictly greater index.}
+\item{m_comp}{Integer vector; offspring counts allocated to components
+with index greater than each component.}
 
-\item{n_off}{Integer scalar; total number of offspring events (i.e.
-\code{sum(n_comp)}).}
+\item{n_off}{Integer; total number of offspring events.}
 
-\item{C_fun}{Function of \code{(w, theta)} returning the kernel
-normalising constant.}
+\item{C_fun}{Function; computes the kernel normalising constant.}
 }
 \value{
-Numeric scalar: the log full conditional density (posterior plus
-log-Jacobian of the logit transform) at \code{logit_v_k}.
+Numeric; log full conditional density at \code{logit_v_k}.
 }
 \description{
-Evaluates the (unnormalised) log full conditional of \code{v_k} on the
-logit scale, for use in a Metropolis-within-Gibbs update. Stick-breaking
-weight \code{w_m} depends on \code{v_k} through a factor of \code{v_k}
-when \code{m == k}, through a common factor of \code{(1 - v_k)} when
-\code{m > k}, and not at all when \code{m < k}. Rather than summing
-\code{log(w_prop[s_O])} over every offspring event (which risks a
-\code{-Inf / -Inf -> NaN} collision if some unrelated component has
-already saturated to ~0 weight elsewhere in the same sweep), only the
-part that truly depends on \code{v_k} is computed directly, using the
-precomputed per-component offspring counts \code{n_comp} (allocated to
-exactly component \code{k}) and \code{m_comp} (allocated to any component
-above \code{k}). Unaffected by marks, same reasoning as
-\code{\link{logpost_theta_k}}.
+Evaluates the log full conditional of \code{v_k} on the logit scale,
+including the Beta prior and transformation Jacobian.
 }
 \keyword{internal}

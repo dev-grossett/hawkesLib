@@ -2,7 +2,7 @@
 % Please edit documentation in R/marked_hawkes_npb.R
 \name{hawkes_resid_posterior}
 \alias{hawkes_resid_posterior}
-\title{Posterior-predictive compensator, averaged across posterior draws}
+\title{Compute posterior-averaged Hawkes compensators}
 \usage{
 hawkes_resid_posterior(
   times,
@@ -16,53 +16,27 @@ hawkes_resid_posterior(
 )
 }
 \arguments{
-\item{times}{Numeric vector of event times, sorted ascending.}
+\item{times}{Numeric vector; sorted event times.}
 
-\item{marks}{Numeric vector, same length as \code{times}; event marks.}
+\item{marks}{Numeric vector; event marks.}
 
-\item{chains}{Either the list returned in \code{run_mcmc()$chains}, or
-an already row-bound matrix of posterior draws (as in
-\code{\link{plot_hawkes_kernel}}).}
+\item{chains}{Posterior draws as a chain list or samples matrix.}
 
 \item{K}{Integer; number of mixture components.}
 
 \item{kernel}{Character; \code{"step"} or \code{"pwlin"}.}
 
-\item{n_draws}{Integer; number of posterior draws to subsample (without
-replacement) for the average. Default 200 -- each draw costs a full
-\code{\link{hawkes_resid}} evaluation (O(n) compensator calls, each
-O(K) after the \code{n_before} fix above), so this trades precision
-for runtime on large event catalogs.}
+\item{mark_productivity}{Character; \code{"linear"} or \code{"exponential"}.}
 
-\item{seed}{Optional integer seed for reproducible subsampling.}
+\item{n_draws}{Integer; number of posterior draws to use. Default 200.}
+
+\item{seed}{Integer or \code{NULL}; seed for draw subsampling.}
 }
 \value{
-A list with:
-\describe{
-\item{tau_mean}{Numeric vector, same length as \code{times}: the
-posterior-predictive-averaged \eqn{\Lambda(T_i)} at each event
-time. Feed \code{diff(c(0, tau_mean))} into your existing Q-Q /
-K-S code exactly as you would \code{\link{hawkes_resid}}'s
-output.}
-\item{tau_draws}{\code{n_draws x length(times)} matrix; each row is
-one draw's own (self-consistent, not averaged) \eqn{\Lambda(T_i)}
-sequence -- useful for a spaghetti-style residual plot showing
-posterior uncertainty in the diagnostic itself.}
-\item{draw_idx}{Integer vector; which rows of the combined samples
-matrix were used.}
-}
+List containing \code{tau_mean}, \code{tau_draws}, and
+\code{draw_idx}.
 }
 \description{
-Rather than plugging \code{colMeans()} of the posterior samples into a
-single \code{\link{compensator}} evaluation, this evaluates the
-compensator separately for each of a subsample of posterior draws, then
-averages the resulting \eqn{\Lambda(T_i)} sequences pointwise across
-draws. This matters specifically for mixture-component parameters
-(\code{theta_k}, \code{v_k}): they are only weakly identified
-individually (exchangeable across the K components, prone to label
-switching across MCMC iterations), so averaging them directly in
-parameter space can reconstruct a kernel that doesn't correspond to any
-actual posterior draw. Averaging the compensator \emph{values} instead
-(function-space averaging) is the same principle already used by
-\code{\link{plot_hawkes_kernel}}, and is robust to this.
+Evaluates the compensator for a subsample of posterior draws and averages
+the resulting values at each observed event time.
 }

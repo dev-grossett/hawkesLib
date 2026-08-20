@@ -2,7 +2,7 @@
 % Please edit documentation in R/sim-helpers.R
 \name{simulate_mhp}
 \alias{simulate_mhp}
-\title{Simulate a marked Hawkes process from a parameter set}
+\title{Simulate a marked Hawkes process from model parameters}
 \usage{
 simulate_mhp(
   T_max,
@@ -12,30 +12,24 @@ simulate_mhp(
 )
 }
 \arguments{
-\item{T_max}{Numeric scalar; length of the simulation window.}
+\item{T_max}{Numeric scalar; simulation window length.}
 
-\item{params}{A list with elements \code{lambda0}, \code{A}, \code{beta},
-\code{theta} (length K), \code{v} (length K-1), \code{gamma}. Matches
-the shape of \code{\link{run_sampler}}'s \code{init} argument (minus
-\code{alpha}/\code{phi}, which govern the priors, not the generative
-process itself).}
+\item{params}{List containing \code{lambda0}, \code{A}, \code{beta},
+\code{theta}, \code{v}, and \code{gamma}.}
 
-\item{kernel}{Character; \code{"step"} or \code{"pwlin"}.}
+\item{kernel}{Character; kernel type, \code{"step"} or \code{"pwlin"}.}
+
+\item{mark_productivity}{Character; mark-productivity form,
+\code{"linear"} or \code{"exponential"}.}
 }
 \value{
-An object of class \code{c("marked_pp_sim", "point_process_sim")},
-as returned by \code{sim_mhp()} -- \code{$events} (times) and
-\code{$marks} are what you'll feed into \code{\link{run_mcmc}} for
-refitting.
+An object of class \code{c("marked_pp_sim", "point_process_sim")}
+containing the simulated event times and marks.
 }
 \description{
-Thin convenience wrapper around \code{sim_mhp()}: unpacks a parameter
-list (in the same shape used elsewhere in this codebase --
-\code{\link{run_sampler}}'s \code{init}, or one row of a posterior
-samples matrix), builds the stick-breaking weights and normalising
-constant once, and calls \code{sim_mhp()} with \code{\link{mhp_intensity}}
-and an iid \code{Exp(gamma)} mark generator -- matching the "marks are
-unpredictable" assumption in the generative model.
+Wraps \code{\link{sim_mhp}} using the supplied parameters, with
+stick-breaking weights and kernel normalisation computed internally.
+Marks are generated independently as \eqn{\mathrm{Exp}(\gamma)}.
 }
 \examples{
 \dontrun{
@@ -45,7 +39,6 @@ true_params <- list(
   gamma = 2.2
 )
 sim <- simulate_mhp(T_max = 500, params = true_params, kernel = "pwlin")
-fit <- run_mcmc(sim$events, sim$marks, T_max = 500, kernel = "pwlin", K = 10)
 }
 
 }

@@ -2,11 +2,16 @@
 % Please edit documentation in R/marked_hawkes_npb.R
 \name{default_proposal_sds}
 \alias{default_proposal_sds}
-\title{Default Metropolis proposal standard deviations}
+\title{Default MCMC proposal standard deviations}
 \usage{
 default_proposal_sds()
 }
+\value{
+Named list with elements \code{theta_k}, \code{v_k}, and
+\code{beta}.
+}
 \description{
-Default Metropolis proposal standard deviations
+Returns the default random-walk proposal standard deviations for
+\code{theta}, \code{v}, and \code{beta}.
 }
 \keyword{internal}

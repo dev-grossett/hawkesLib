@@ -2,21 +2,19 @@
 % Please edit documentation in R/sim-helpers.R
 \name{true_kernel_fn}
 \alias{true_kernel_fn}
-\title{Build the "true" kernel function from a set of parameters}
+\title{Construct the kernel function from model parameters}
 \usage{
 true_kernel_fn(params, kernel = c("step", "pwlin"))
 }
 \arguments{
-\item{params}{A list with elements \code{theta} (length K),
-\code{v} (length K-1) -- as in \code{\link{simulate_mhp}}.}
+\item{params}{List containing \code{theta} and \code{v}.}
 
-\item{kernel}{Character; \code{"step"} or \code{"pwlin"}.}
+\item{kernel}{Character; kernel type, \code{"step"} or \code{"pwlin"}.}
 }
 \value{
-A function of \code{x} (vectorised), giving the true kernel value.
+A vectorised function of \code{x} returning the kernel value.
 }
 \description{
-Constructs \eqn{f(x) = \sum_k w_k g_k(x)} from a fixed parameter set -- for
-use as the \code{true_kernel} argument to \code{\link{plot_hawkes_kernel}}
-when checking kernel-shape recovery in a simulation study.
+Returns the normalised kernel implied by the supplied atom locations and
+stick-breaking weights.
 }

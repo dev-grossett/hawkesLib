@@ -2,7 +2,7 @@
 % Please edit documentation in R/marked_hawkes_npb.R
 \name{compensator}
 \alias{compensator}
-\title{Ground-process compensator for the marked Hawkes process}
+\title{Compute the marked-Hawkes ground-process compensator}
 \usage{
 compensator(
   t,
@@ -16,37 +16,27 @@ compensator(
 )
 }
 \arguments{
-\item{t}{Numeric scalar; time at which to evaluate the compensator.}
+\item{t}{Numeric; evaluation time.}
 
-\item{times}{Numeric vector of event times, sorted ascending.}
+\item{times}{Numeric vector; sorted event times.}
 
-\item{marks}{Numeric vector, same length as \code{times}; event marks.}
+\item{marks}{Numeric vector; event marks.}
 
-\item{params}{Numeric vector \code{c(lambda0, A, theta_1, ..., theta_K, 
-v_1, ..., v_{K-1})} -- e.g. one row/summary of the posterior
-samples matrix restricted to these columns. Should be named (as
-\code{colMeans()} or a single row of a samples matrix would be) so
-\code{theta}/\code{v} are matched by name rather than position.}
+\item{params}{Named numeric vector; posterior parameter values.}
 
 \item{K}{Integer; number of mixture components.}
 
 \item{kernel}{Character; \code{"step"} or \code{"pwlin"}.}
 
-\item{mark_productivity}{Character; \code{"linear"} or \code{"exponential"}}
+\item{mark_productivity}{Character; \code{"linear"} or \code{"exponential"}.}
 
-\item{n_before}{Optional integer; number of events strictly before
-\code{t}. If \code{NULL} (the default), computed as
-\code{sum(times < t)}. Passing this in directly (as
-\code{\link{hawkes_resid}} does, since it always evaluates at
-\code{t = times[i]} and so knows \code{n_before = i - 1} without a
-scan) avoids an O(n) scan per call -- useful when \code{compensator()}
-is called many times, e.g. across many posterior draws.}
+\item{n_before}{Integer or \code{NULL}; number of events before \code{t}.
+If \code{NULL}, computed from \code{times}.}
 }
 \value{
-Numeric scalar, \eqn{\Lambda(t)}.
+Numeric scalar; \eqn{\Lambda(t)}.
 }
 \description{
-Computes \eqn{\Lambda(t) = \int_0^t \lambda_g^*(s)\,ds}, the integrated
-ground intensity up to time \code{t}, for use in residual/goodness-of-fit
-diagnostics via the random time change theorem.
+Computes the integrated ground intensity \eqn{\Lambda(t)} up to time
+\code{t} for residual and goodness-of-fit diagnostics.
 }

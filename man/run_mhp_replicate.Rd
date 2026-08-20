@@ -2,7 +2,7 @@
 % Please edit documentation in R/sim-helpers.R
 \name{run_mhp_replicate}
 \alias{run_mhp_replicate}
-\title{Run one simulate-and-refit replicate}
+\title{Simulate and refit one marked Hawkes process replicate}
 \usage{
 run_mhp_replicate(
   T_max,
@@ -20,42 +20,39 @@ run_mhp_replicate(
 )
 }
 \arguments{
-\item{T_max}{Numeric scalar; simulation/fit window length.}
+\item{T_max}{Numeric scalar; simulation and fitting window length.}
 
-\item{true_params}{A list as expected by \code{\link{simulate_mhp}}
-(\code{lambda0, A, beta (if "exponential" productivity), theta, v, gamma}).}
+\item{true_params}{List containing the true simulation parameters:
+\code{lambda0}, \code{A}, \code{beta}, \code{theta}, \code{v}, and
+\code{gamma}.}
 
-\item{kernel}{Character; \code{"step"} or \code{"pwlin"}.}
+\item{kernel}{Character; kernel type, \code{"step"} or \code{"pwlin"}.}
 
-\item{mark_productivity}{Character; \code{"linear"} or \code{"exponential"}.}
+\item{mark_productivity}{Character; mark-productivity form,
+\code{"linear"} or \code{"exponential"}.}
 
-\item{K}{Integer; truncation level used when \emph{refitting} (need not equal
-\code{length(true_params$theta)} -- e.g. you can simulate from a
-simpler true kernel and fit with more components, or vice versa).}
+\item{K}{Integer; number of kernel components used when fitting.}
 
-\item{n_chains, n_iter}{As in \code{\link{run_mcmc}}. Defaults here are
-lighter than \code{run_mcmc}'s own defaults (2 chains, 4000 iterations)
-since a simulation study cares about calibration across many
-replicates rather than a single maximally-precise fit -- increase if
-individual replicate Rhats look poor.}
+\item{n_chains}{Integer; number of MCMC chains.}
 
-\item{fit_seed, sim_seed}{Optional integer seeds for the MCMC chains and
-for the data simulation respectively -- kept separate since they seed
-different RNG mechanisms (\code{parallel::clusterSetRNGStream} vs the
-global RNG).}
+\item{n_iter}{Integer; number of iterations per chain.}
 
-\item{prior_params, proposal_sds}{As in \code{\link{run_mcmc}}.}
+\item{fit_seed}{Integer or \code{NULL}; seed for MCMC fitting.}
 
-\item{progress}{Logical; passed to \code{\link{run_mcmc}}.}
+\item{sim_seed}{Integer or \code{NULL}; seed for data simulation.}
+
+\item{prior_params}{List of prior parameters passed to \code{\link{run_mcmc}}.}
+
+\item{proposal_sds}{List of proposal standard deviations passed to
+\code{\link{run_mcmc}}.}
+
+\item{progress}{Logical; whether to display MCMC progress.}
 }
 \value{
-A list with \code{sim} (the simulated \code{point_process_sim}
-object) and \code{fit} (the \code{\link{run_mcmc}} output).
+A list containing the simulated data in \code{$sim} and the fitted
+model in \code{$fit}.
 }
 \description{
-Simulates one synthetic catalog from \code{true_params} via
-\code{\link{simulate_mhp}}, then refits it with \code{\link{run_mcmc}}.
-A single building block for \code{\link{run_simulation_study}}; call
-directly if you just want to inspect one replicate (e.g. for the kernel
-recovery plot).
+Simulates one dataset from \code{true_params} and fits the model using
+\code{\link{run_mcmc}}.
 }
