@@ -53,8 +53,8 @@ my_intens <- function(t, times, marks, lambda0) {
   lambda0 + sum(marks * exp(-(t - times)))
 }
 
-sim_mhp(T_max = 5, 
-        intensity_func = my_intens, 
-        rmark_func = function() runif(1, 0, 1), 
+sim_mhp(T_max = 5,
+        intensity_func = my_intens,
+        rmark_func = function() runif(1, 0, 1),
         lambda0 = 1)
 }
