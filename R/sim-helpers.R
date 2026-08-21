@@ -1,7 +1,7 @@
 ################################################################################
 # Simulation utilities for the marked Hawkes process, built on top of the
-# existing sim_mhp() thinning simulator. Used to perform a simulation study of 
-# the developed sampler. 
+# existing sim_mhp() thinning simulator. Used to perform a simulation study of
+# the developed sampler.
 ################################################################################
 
 #' Evaluate the ground intensity of a marked Hawkes process
@@ -26,26 +26,35 @@
 #' @return Numeric scalar; conditional ground intensity at \code{t}.
 #'
 #' @export
-mhp_intensity <- function(t, times, marks, lambda0, A, beta = NULL, theta, w, C,
-                          kernel = c("step", "pwlin"), 
-                          mark_productivity = c("linear", "exponential")) {
-  
+mhp_intensity <- function(
+  t,
+  times,
+  marks,
+  lambda0,
+  A,
+  beta = NULL,
+  theta,
+  w,
+  C,
+  kernel = c("step", "pwlin"),
+  mark_productivity = c("linear", "exponential")
+) {
   kernel <- match.arg(kernel)
-  mark_productivity = match.arg(mark_productivity)
-  
+  mark_productivity <- match.arg(mark_productivity)
+
   if (length(times) == 0) {
     return(lambda0)
   }
-  
-  dt <- t - times   # all > 0, since sim_mhp() only ever passes accepted history
-  
+
+  dt <- t - times # all > 0, since sim_mhp() only ever passes accepted history
+
   if (kernel == "step") {
     basis <- outer(dt, theta, function(d, th) as.numeric(d < th))
   } else {
     basis <- outer(dt, theta, function(d, th) pmax(th - d, 0))
   }
-  f_vals <- as.numeric(basis %*% w) / C   # f(dt_j) for each past event j
-  
+  f_vals <- as.numeric(basis %*% w) / C # f(dt_j) for each past event j
+
   if (mark_productivity == "linear") {
     lambda0 + A * sum(marks * f_vals)
   } else if (mark_productivity == "exponential") {
@@ -81,24 +90,27 @@ mhp_intensity <- function(t, times, marks, lambda0, A, beta = NULL, theta, w, C,
 #' }
 #'
 #' @export
-simulate_mhp <- function(T_max, params, kernel = c("step", "pwlin"), 
-                         mark_productivity = c("linear", "exponential")) {
-  
+simulate_mhp <- function(
+  T_max,
+  params,
+  kernel = c("step", "pwlin"),
+  mark_productivity = c("linear", "exponential")
+) {
   kernel <- match.arg(kernel)
-  mark_productivity = match.arg(mark_productivity)
-  
+  mark_productivity <- match.arg(mark_productivity)
+
   K <- length(params$theta)
   stopifnot(length(params$v) == K - 1)
-  
+
   remaining <- cumprod(c(1, 1 - params$v))
   w <- c(params$v, 1) * remaining
-  
+
   if (kernel == "step") {
     C <- sum(w * params$theta)
   } else {
     C <- 0.5 * sum(w * params$theta^2)
   }
-  
+
   sim_mhp(
     T_max = T_max,
     intensity_func = mhp_intensity,
@@ -127,19 +139,18 @@ simulate_mhp <- function(T_max, params, kernel = c("step", "pwlin"),
 #'
 #' @export
 true_kernel_fn <- function(params, kernel = c("step", "pwlin")) {
-  
   kernel <- match.arg(kernel)
-  
+
   remaining <- cumprod(c(1, 1 - params$v))
   w_raw <- c(params$v, 1) * remaining
-  
+
   if (kernel == "step") {
     C <- sum(w_raw * params$theta)
   } else {
     C <- 0.5 * sum(w_raw * params$theta^2)
   }
   w <- w_raw / C
-  
+
   function(x) {
     if (kernel == "step") {
       basis <- outer(x, params$theta, function(xx, th) as.numeric(xx < th))
@@ -177,28 +188,48 @@ true_kernel_fn <- function(params, kernel = c("step", "pwlin")) {
 #'   model in \code{$fit}.
 #'
 #' @export
-run_mhp_replicate <- function(T_max, true_params, kernel = c("step", "pwlin"), 
-                              mark_productivity = c("linear", "exponential"), K,
-                              n_chains = 2, n_iter = 4000,
-                              fit_seed = NULL, sim_seed = NULL,
-                              prior_params = default_prior_params(),
-                              proposal_sds = default_proposal_sds(),
-                              progress = FALSE) {
-  
+run_mhp_replicate <- function(
+  T_max,
+  true_params,
+  kernel = c("step", "pwlin"),
+  mark_productivity = c("linear", "exponential"),
+  K,
+  n_chains = 2,
+  n_iter = 4000,
+  fit_seed = NULL,
+  sim_seed = NULL,
+  prior_params = default_prior_params(),
+  proposal_sds = default_proposal_sds(),
+  progress = FALSE
+) {
   kernel <- match.arg(kernel)
-  mark_productivity = match.arg(mark_productivity)
-  
-  if (!is.null(sim_seed)) set.seed(sim_seed)
-  sim <- simulate_mhp(T_max = T_max, params = true_params, kernel = kernel, 
-                      mark_productivity = mark_productivity)
-  
-  fit <- run_mcmc(
-    times = sim$events, marks = sim$marks, T_max = T_max, kernel = kernel, 
-    mark_productivity = mark_productivity, K = K, n_chains = n_chains, 
-    n_iter = n_iter, seed = fit_seed, prior_params = prior_params, 
-    proposal_sds = proposal_sds, progress = progress
+  mark_productivity <- match.arg(mark_productivity)
+
+  if (!is.null(sim_seed)) {
+    set.seed(sim_seed)
+  }
+  sim <- simulate_mhp(
+    T_max = T_max,
+    params = true_params,
+    kernel = kernel,
+    mark_productivity = mark_productivity
   )
-  
+
+  fit <- run_mcmc(
+    times = sim$events,
+    marks = sim$marks,
+    T_max = T_max,
+    kernel = kernel,
+    mark_productivity = mark_productivity,
+    K = K,
+    n_chains = n_chains,
+    n_iter = n_iter,
+    seed = fit_seed,
+    prior_params = prior_params,
+    proposal_sds = proposal_sds,
+    progress = progress
+  )
+
   list(sim = sim, fit = fit)
 }
 
@@ -244,17 +275,26 @@ run_mhp_replicate <- function(T_max, true_params, kernel = c("step", "pwlin"),
 #'   }
 #'
 #' @export
-run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin"), 
-                                 mark_productivity = c("linear", "exponential"), K,
-                                 R = 20, n_chains = 2, n_iter = 4000, n_burn=NULL,
-                                 base_seed = 1,
-                                 prior_params = default_prior_params(),
-                                 proposal_sds = default_proposal_sds(),
-                                 ci_level = 0.95, progress = FALSE, verbose = TRUE) {
-  
+run_simulation_study <- function(
+  T_max,
+  true_params,
+  kernel = c("step", "pwlin"),
+  mark_productivity = c("linear", "exponential"),
+  K,
+  R = 20,
+  n_chains = 2,
+  n_iter = 4000,
+  n_burn = NULL,
+  base_seed = 1,
+  prior_params = default_prior_params(),
+  proposal_sds = default_proposal_sds(),
+  ci_level = 0.95,
+  progress = FALSE,
+  verbose = TRUE
+) {
   kernel <- match.arg(kernel)
-  mark_productivity = match.arg(mark_productivity)
-  
+  mark_productivity <- match.arg(mark_productivity)
+
   if (mark_productivity == "linear") {
     scalar_names <- c("lambda0", "A", "gamma")
   } else if (mark_productivity == "exponential") {
@@ -262,28 +302,39 @@ run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin")
   }
   true_vals <- unlist(true_params[scalar_names])
   tail_p <- (1 - ci_level) / 2
-  
+
   results <- vector("list", R)
-  
+
   for (r in seq_len(R)) {
-    if (verbose) cat(sprintf("Replicate %d/%d...\n", r, R))
-    
+    if (verbose) {
+      cat(sprintf("Replicate %d/%d...\n", r, R))
+    }
+
     rep_out <- tryCatch(
       run_mhp_replicate(
-        T_max = T_max, true_params = true_params, kernel = kernel, 
-        mark_productivity = mark_productivity, K = K,
-        n_chains = n_chains, n_iter = n_iter,
-        fit_seed = base_seed + r, sim_seed = base_seed + r,
-        prior_params = prior_params, proposal_sds = proposal_sds, progress = progress
+        T_max = T_max,
+        true_params = true_params,
+        kernel = kernel,
+        mark_productivity = mark_productivity,
+        K = K,
+        n_chains = n_chains,
+        n_iter = n_iter,
+        fit_seed = base_seed + r,
+        sim_seed = base_seed + r,
+        prior_params = prior_params,
+        proposal_sds = proposal_sds,
+        progress = progress
       ),
       error = function(e) {
         warning(sprintf("Replicate %d failed: %s", r, conditionMessage(e)))
         NULL
       }
     )
-    
-    if (is.null(rep_out)) next
-    
+
+    if (is.null(rep_out)) {
+      next
+    }
+
     if (!is.null(n_burn)) {
       for (j in seq_along(rep_out$fit$chains)) {
         rep_out$fit$chains[[j]]$samples <-
@@ -294,19 +345,21 @@ run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin")
           ]
       }
     }
-    
+
     samples <- do.call(
-      rbind, 
+      rbind,
       lapply(rep_out$fit$chains, function(ch) ch$samples)
     )
-    
+
     est <- sapply(scalar_names, function(nm) {
       x <- samples[, nm]
-      c(mean  = mean(x),
+      c(
+        mean = mean(x),
         lower = as.numeric(quantile(x, tail_p)),
-        upper = as.numeric(quantile(x, 1 - tail_p)))
+        upper = as.numeric(quantile(x, 1 - tail_p))
+      )
     })
-    
+
     results[[r]] <- list(
       n_events = rep_out$sim$n,
       events = rep_out$sim$events,
@@ -315,43 +368,54 @@ run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin")
       fit = rep_out$fit
     )
   }
-  
+
   ok <- !sapply(results, is.null)
   results <- results[ok]
   R_ok <- length(results)
-  if (verbose) cat(sprintf("%d/%d replicates completed successfully.\n", R_ok, R))
-  if (R_ok == 0) stop("All replicates failed -- check true_params/settings.")
-  
-  mean_mat  <- t(sapply(results, function(res) res$est["mean", ]))
+  if (verbose) {
+    cat(sprintf("%d/%d replicates completed successfully.\n", R_ok, R))
+  }
+  if (R_ok == 0) {
+    stop("All replicates failed -- check true_params/settings.")
+  }
+
+  mean_mat <- t(sapply(results, function(res) res$est["mean", ]))
   lower_mat <- t(sapply(results, function(res) res$est["lower", ]))
   upper_mat <- t(sapply(results, function(res) res$est["upper", ]))
-  colnames(mean_mat) <- colnames(lower_mat) <- colnames(upper_mat) <- scalar_names
-  
+  colnames(mean_mat) <- colnames(lower_mat) <- colnames(
+    upper_mat
+  ) <- scalar_names
+
   covered <- sapply(scalar_names, function(nm) {
     (lower_mat[, nm] <= true_vals[nm]) & (true_vals[nm] <= upper_mat[, nm])
   })
-  
-  true_vals_rep <- matrix(true_vals, nrow(mean_mat), length(true_vals), byrow = TRUE)
-  
-  summary_tbl <- data.frame(
-    parameter  = scalar_names,
-    true_value = true_vals,
-    mean_est   = colMeans(mean_mat),
-    bias       = colMeans(mean_mat) - true_vals,
-    rmse       = sqrt(colMeans((mean_mat - true_vals_rep)^2)),
-    coverage   = colMeans(covered),
-    row.names  = NULL
+
+  true_vals_rep <- matrix(
+    true_vals,
+    nrow(mean_mat),
+    length(true_vals),
+    byrow = TRUE
   )
-  
+
+  summary_tbl <- data.frame(
+    parameter = scalar_names,
+    true_value = true_vals,
+    mean_est = colMeans(mean_mat),
+    bias = colMeans(mean_mat) - true_vals,
+    rmse = sqrt(colMeans((mean_mat - true_vals_rep)^2)),
+    coverage = colMeans(covered),
+    row.names = NULL
+  )
+
   list(
-    summary     = summary_tbl,
-    mean_mat    = mean_mat,
-    lower_mat   = lower_mat,
-    upper_mat   = upper_mat,
-    results     = results,
+    summary = summary_tbl,
+    mean_mat = mean_mat,
+    lower_mat = lower_mat,
+    upper_mat = upper_mat,
+    results = results,
     true_params = true_params,
-    kernel      = kernel,
-    ci_level    = ci_level
+    kernel = kernel,
+    ci_level = ci_level
   )
 }
 
@@ -379,49 +443,55 @@ run_simulation_study <- function(T_max, true_params, kernel = c("step", "pwlin")
 #'   MCMC object.
 #'
 #' @export
-diagnose_sim_study <- function(study, R, start = 1, thin = 1,
-                               params = "all", plot = FALSE, lags = NULL, ...) {
-  
+diagnose_sim_study <- function(
+  study,
+  R,
+  start = 1,
+  thin = 1,
+  params = "all",
+  plot = FALSE,
+  lags = NULL,
+  ...
+) {
   # Extract the MCMC chains object
   chains <- study$results[[R]]$fit$chains
-  
+
   mcmc_chains <- lapply(chains, function(chain) {
     coda::mcmc(chain$samples)
   })
-  
+
   mcmc_chains <- window(
     coda::mcmc.list(mcmc_chains),
     start = start,
     thin = thin
   )
-  
+
   # Standard parameter diagnostics
-  if (plot) MCMCvis::MCMCtrace(mcmc_chains, params = params, ...)
-  
+  if (plot) {
+    MCMCvis::MCMCtrace(mcmc_chains, params = params, ...)
+  }
+
   summary <- MCMCvis::MCMCsummary(
     mcmc_chains,
     round = 4,
     params = params
   )
-  
+
   # Compute Gelman-Rubin convergence statistics for the kernel values atspecified lags
   if (!is.null(lags)) {
-    
     kernel <- study$kernel
-    
+
     kernel_chains <- lapply(mcmc_chains, function(chain) {
-      
       samples <- as.matrix(chain)
-      
+
       apply(samples, 1, function(s) {
-        
         theta <- s[grep("^theta", names(s))]
         v <- s[grep("^v", names(s))]
-        
+
         # Stick-breaking weights
         remaining <- cumprod(c(1, 1 - v))
         w <- c(v, 1) * remaining
-        
+
         # Kernel normalising constant
         if (kernel == "step") {
           C <- sum(w * theta)
@@ -443,38 +513,38 @@ diagnose_sim_study <- function(study, R, start = 1, thin = 1,
         as.numeric(basis %*% w / C)
       })
     })
-    
+
     # Convert each chain to an MCMC object
     kernel_chains <- lapply(kernel_chains, function(x) {
       x <- t(x)
       colnames(x) <- paste0("f_", lags)
       coda::mcmc(x)
     })
-    
+
     kernel_mcmc <- coda::mcmc.list(kernel_chains)
-    
+
     # Gelman-Rubin diagnostics
     gelman <- coda::gelman.diag(
       kernel_mcmc,
       autoburnin = FALSE,
       multivariate = FALSE
     )
-    
+
     gelman_stats <- gelman$psrf[, "Point est."]
-    
+
     names(gelman_stats) <- paste0("f(", lags, ")")
-    
+
     kernel_summary <- data.frame(
       lag = lags,
       Rhat = as.numeric(gelman_stats)
     )
-    
+
     return(list(
       parameter_summary = summary,
       kernel_Rhat = kernel_summary,
       kernel_mcmc = kernel_mcmc
     ))
   }
-  
+
   return(summary)
 }
