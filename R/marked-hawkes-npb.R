@@ -743,7 +743,7 @@ run_sampler <- function(
   }
 
   # post adaptation acceptance
-  acceptance_rates <- colMeans(acceptance[1:adapt_end, ])
+  acceptance_rates <- colMeans(acceptance[adapt_end:n_iter, ])
 
   return(list(
     samples = samples,
@@ -1633,3 +1633,19 @@ plot_hawkes_resid_qq <- function(
 
   invisible(list(theoretical_q = theoretical_q, gaps_matrix = gaps_matrix))
 }
+
+################################################################################
+# Model selection using WAIC
+################################################################################
+
+# compute_waic_hawkes <- function(
+#   samples,
+#   times,
+#   marks,
+#   T_max,
+#   kernel = c("step", "pwlin"),
+#   mark_productivity = c("linear", "exponential"),
+#   burn_in = 0.5
+# ) {
+#   kernel
+# }
