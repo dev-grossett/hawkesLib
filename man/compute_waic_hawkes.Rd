@@ -11,7 +11,8 @@ compute_waic_hawkes(
   T_max,
   kernel = c("step", "pwlin"),
   mark_productivity = c("linear", "exponential"),
-  burn_in = 0.5
+  burn_in = 0.5,
+  max_eval_samples = 1000
 )
 }
 \arguments{
@@ -28,6 +29,8 @@ compute_waic_hawkes(
 \item{mark_productivity}{Productivity law: \code{"linear"} or \code{"exponential"}.}
 
 \item{burn_in}{Proportion of MCMC iterations to discard (0 to 1).}
+
+\item{max_eval_samples}{Maximum number of posterior draws to evaluate (prevents slowdown).}
 }
 \value{
 List containing total \code{waic}, \code{lppd}, \code{p_waic},
