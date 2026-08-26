@@ -1638,14 +1638,134 @@ plot_hawkes_resid_qq <- function(
 # Model selection using WAIC
 ################################################################################
 
-# compute_waic_hawkes <- function(
-#   samples,
-#   times,
-#   marks,
-#   T_max,
-#   kernel = c("step", "pwlin"),
-#   mark_productivity = c("linear", "exponential"),
-#   burn_in = 0.5
-# ) {
-#   kernel
-# }
+#' Compute WAIC for Hawkes Process MCMC Sampler
+#'
+#' @param samples Matrix of posterior draws with named columns.
+#' @param times Sorted numeric vector of event timestamps.
+#' @param marks Numeric vector of event marks.
+#' @param T_max Total observation time horizon.
+#' @param kernel Kernel type: \code{"step"} or \code{"pwlin"}.
+#' @param mark_productivity Productivity law: \code{"linear"} or \code{"exponential"}.
+#' @param burn_in Proportion of MCMC iterations to discard (0 to 1).
+#'
+#' @return List containing total \code{waic}, \code{lppd}, \code{p_waic},
+#'   standard error \code{se}, and a \code{pointwise} data frame.
+#' @export
+compute_waic_hawkes <- function(
+  samples,
+  times,
+  marks,
+  T_max,
+  kernel = c("step", "pwlin"),
+  mark_productivity = c("linear", "exponential"),
+  burn_in = 0.5
+) {
+  kernel <- match.arg(kernel)
+  mark_productivity <- match.arg(mark_productivity)
+
+  # Discard burn-in samples
+  n_iter <- nrow(samples)
+  post_burn <- seq(floor(n_iter * burn_in) + 1, n_iter)
+  S_eff <- length(post_burn)
+  n <- length(times)
+
+  # Setup clean matrix for pointwise log-likelihoods
+  log_lik_matrix <- matrix(0, nrow = S_eff, ncol = n)
+
+  # Event time differences
+  dt_mat <- outer(times, times, "-")
+  dt_mat[upper.tri(dt_mat, diag = TRUE)] <- NA # Only keep past events (j < i)
+
+  message("Computing pointwise log-likelihood matrix...")
+
+  for (s_idx in seq_len(S_eff)) {
+    # Extract parameter vector for this MCMC draw
+    draw <- samples[post_burn[s_idx], ]
+
+    # Extract parameter values from parameter vector
+    l0 <- draw["lambda0"]
+    A <- draw["A"]
+
+    # Broadcasting calculations using our pre-computed dt_mat matrix
+    # Reconstruct stick-breaking weights for the mixture kernel
+    theta_vals <- draw[grep("^theta", names(draw))]
+    v_vals <- draw[grep("^v", names(draw))]
+    K <- length(theta_vals)
+    remaining <- cumprod(c(1, 1 - v_vals))
+    w <- c(v_vals, 1) * remaining
+
+    # Kernel Normalising Constants C
+    if (kernel == "step") {
+      C_const <- sum(w * theta_vals)
+    } else if (kernel == "pwlin") {
+      C_const <- 0.5 * sum(w * theta_vals^2)
+    }
+
+    # Compute productivity term eta(M) for all historical items
+    if (mark_productivity == "linear") {
+      eta <- A * marks
+    } else {
+      beta <- draw["beta"]
+      eta <- A * exp(beta * marks)
+    }
+
+    # Evaluate Kernel density f(t - t_j) for all pairs
+    f_mat <- matrix(0, nrow = n, ncol = n)
+
+    if (kernel == "step") {
+      for (k in 1:K) {
+        # indicator basis I(theta > \tau)
+        f_mat <- f_mat +
+          (w[k] * (dt_mat < theta_vals[k] & dt_mat > 0)) / C_const
+      }
+    } else if (kernel == "pwlin") {
+      for (k in 1:K) {
+        # max(0, theta - dt) evaluation
+        diff_val <- theta_vals[k] - dt_mat
+        # Replace future points (NA) and expired points (< 0) with 0
+        diff_val[is.na(diff_val) | diff_val < 0] <- 0
+        f_mat <- f_mat + (w[k] * diff_val) / C_const
+      }
+    }
+    f_mat[is.na(f_mat)] <- 0
+
+    # Multiply rows by eta and sum them up using matrix multiplication.
+    trigger_intensities <- as.vector(f_mat %*% eta)
+
+    # Total instantaneous conditional intensity at point i
+    lambda_i <- l0 + trigger_intensities
+
+    # Assign pointwise log-likelihood allocations
+    log_lik_matrix[s_idx, ] <- log(lambda_i) - ((l0 * T_max) / n) - eta
+  }
+
+  message("Calculating final Information Criteria...")
+
+  # Stable log-sum-exp per column
+  log_sum_exp <- function(x) {
+    max_x <- max(x)
+    max_x + log(sum(exp(x - max_x)))
+  }
+
+  lppd_i <- apply(log_lik_matrix, 2, function(col) {
+    log_sum_exp(col) - log(S_eff)
+  })
+  lppd <- sum(lppd_i)
+
+  # Effective parameters penalty (Sample variance per column)
+  p_waic_i <- apply(log_lik_matrix, 2, var)
+  p_waic <- sum(p_waic_i)
+
+  waic_value <- -2 * (lppd - p_waic)
+
+  # Compute Standard Error of the difference
+  se_waic <- sqrt(n * var(-2 * (lppd_i - p_waic_i)))
+
+  return(list(
+    waic = waic_value,
+    lppd = lppd,
+    p_waic = p_waic,
+    se = se_waic,
+    pointwise = data.frame(lppd = lppd_i, p_waic = p_waic_i)
+  ))
+}
