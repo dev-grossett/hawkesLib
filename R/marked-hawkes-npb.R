@@ -1635,10 +1635,12 @@ plot_hawkes_resid_qq <- function(
 }
 
 ################################################################################
-# Model selection using WAIC
+# Model selection using WAIC and PSIS-LOO
 ################################################################################
 
-#' Compute WAIC for Hawkes Process MCMC Sampler
+#' Compute WAIC and PSIS-LOO for Hawkes Process MCMC Sampler
+#'
+#' Evaluates model information criteria and predictive cross-validation performance.
 #'
 #' @param samples Matrix of posterior draws with named columns.
 #' @param times Sorted numeric vector of event timestamps.
@@ -1647,12 +1649,11 @@ plot_hawkes_resid_qq <- function(
 #' @param kernel Kernel type: \code{"step"} or \code{"pwlin"}.
 #' @param mark_productivity Productivity law: \code{"linear"} or \code{"exponential"}.
 #' @param burn_in Proportion of MCMC iterations to discard (0 to 1).
-#' @param max_eval_samples Maximum number of posterior draws to evaluate (prevents slowdown).
+#' @param max_eval_samples Maximum number of posterior draws to evaluate.
 #'
-#' @return List containing total \code{waic}, \code{lppd}, \code{p_waic},
-#'   standard error \code{se}, and a \code{pointwise} data frame.
+#' @return List containing \code{waic} object, \code{loo} object, and the raw \code{log_lik_matrix}.
 #' @export
-compute_waic_hawkes <- function(
+compute_hawkes_metrics <- function(
   samples,
   times,
   marks,
@@ -1683,7 +1684,6 @@ compute_waic_hawkes <- function(
 
   # Pre-calculate time deltas
   dt_mat <- outer(times, times, "-")
-  dt_mat[dt_mat <= 0] <- NA
 
   message(sprintf(
     "Constructing log-likelihood matrix using %d MCMC samples...",
@@ -1722,13 +1722,17 @@ compute_waic_hawkes <- function(
 
     if (kernel == "step") {
       for (k in 1:K) {
+        # Strictly past events (dt_mat > 0) AND within the step horizon
         f_mat <- f_mat +
-          (w[k] * (!is.na(dt_mat) & dt_mat < theta_vals[k])) / C_const
+          (w[k] * (dt_mat > 0 & dt_mat < theta_vals[k])) / C_const
       }
     } else if (kernel == "pwlin") {
       for (k in 1:K) {
         diff_val <- theta_vals[k] - dt_mat
-        diff_val[is.na(diff_val) | diff_val < 0] <- 0
+        # Enforce causality (dt_mat > 0) AND truncate negative decay
+        # Any future step or expired step is flattened to 0 in one line
+        diff_val[dt_mat <= 0 | diff_val < 0] <- 0
+
         f_mat <- f_mat + (w[k] * diff_val) / C_const
       }
     }
@@ -1739,6 +1743,41 @@ compute_waic_hawkes <- function(
     log_lik_matrix[s_idx, ] <- log(lambda_i) - ((l0 * T_max) / n) - eta
   }
   close(pb)
+
+  # -------------------------------------------------------------
+  # Diagnostic check for NA, NaN, or infinite values
+  # -------------------------------------------------------------
+  bad_indices <- which(
+    is.na(log_lik_matrix) | is.infinite(log_lik_matrix),
+    arr.ind = TRUE
+  )
+
+  if (nrow(bad_indices) > 0) {
+    message("\n[DIAGNOSTIC WARNING] Found invalid entries in log_lik_matrix!")
+    print(head(bad_indices, 20)) # Prints the first 20 bad (row, col) coordinates
+
+    # Extract unique bad rows (MCMC sample numbers)
+    unique_bad_rows <- unique(bad_indices[, "row"])
+    message(sprintf(
+      "Found issues in %d different MCMC samples.",
+      length(unique_bad_rows)
+    ))
+
+    # Print the full matrix or a subset of the bad rows
+    if (length(unique_bad_rows) <= 5) {
+      message("Printing the problematic matrix rows:")
+      print(log_lik_matrix[unique_bad_rows, , drop = FALSE])
+    } else {
+      message(
+        "Too many bad rows to print all. Printing the first 3 problematic rows:"
+      )
+      print(log_lik_matrix[unique_bad_rows[1:3], , drop = FALSE])
+    }
+
+    stop(
+      "Stopping execution because loo package cannot accept NA/NaN/Inf values."
+    )
+  }
 
   message("Computing Information Criteria and Importance Sampling...")
   waic_res <- loo::waic(log_lik_matrix)
