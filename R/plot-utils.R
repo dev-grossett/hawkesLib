@@ -101,3 +101,46 @@ add_counting_process <- function(H_t, T_max, col = "black") {
   }
   return(intensities)
 }
+
+#' @keywords internal
+.get_exp_mhp_intensity_grid <- function(t_grid, H_t, marks, theta) {
+  # Unpack
+  lambda_0 <- theta[1]
+  A <- theta[2]
+  beta <- theta[3]
+  n <- length(H_t)
+
+  # Exponential kernel speedup
+  # R[i] is the mark-weighted excitation immediately before event i,
+  # excluding the multiplicative parameter A.
+  R <- numeric(n)
+  if (n > 1) {
+    for (i in 2:n) {
+      R[i] <- exp(-beta * (H_t[i] - H_t[i - 1])) *
+        (marks[i - 1] + R[i - 1])
+    }
+  }
+
+  # Map grid points to the most recent event index
+  idx <- findInterval(t_grid, H_t)
+
+  intensities <- numeric(length(t_grid))
+
+  # Before the first event: baseline only
+  intensities[idx == 0] <- lambda_0
+
+  # After at least one event:
+  # lambda(t) = lambda_0 +
+  #   A * (marks[last] + R[last]) * exp(-beta * (t - T_last))
+  has_past <- idx > 0
+
+  if (any(has_past)) {
+    last_ev_idx <- idx[has_past]
+    dt <- t_grid[has_past] - H_t[last_ev_idx]
+
+    intensities[has_past] <- lambda_0 +
+      A * (marks[last_ev_idx] + R[last_ev_idx]) * exp(-beta * dt)
+  }
+
+  return(intensities)
+}
