@@ -726,11 +726,20 @@ print.summary.marked_hawkes_fit <- function(x, ...) {
 #' @description S3 method for the `marked_hawkes_fit` class. Plots the fitted
 #'   ground-process conditional intensity against the observed event times.
 #' @param x An object of class `marked_hawkes_fit`.
+#' @param show_marks Boolean. If `TRUE` displays mark magnitude plot below
+#'   fitted intensity
 #' @param n_grid Integer. The number of points used to calculate the
 #'   intensity curve. Default is 1000.
 #' @param ... Additional arguments passed to the plot.
 #' @export
-plot.marked_hawkes_fit <- function(x, n_grid = 1000, ...) {
+plot.marked_hawkes_fit <- function(x, show_marks = TRUE, n_grid = 1000, ...) {
+  old_par <- par(no.readonly = TRUE)
+  on.exit(par(old_par))
+
+  if (show_marks) {
+    par(mfrow = c(2, 1), mar = c(4, 4, 2, 1))
+  }
+
   t_grid <- sort(unique(c(
     seq(0, x$T_max, length.out = n_grid),
     x$H_t,
@@ -762,7 +771,29 @@ plot.marked_hawkes_fit <- function(x, n_grid = 1000, ...) {
     x$par[3]
   )
 
-  graphics::mtext(m_text, side = 3, line = 0.2, cex = 0.8)
+  if (show_marks) {
+    plot(
+      x$H_t,
+      x$marks,
+      type = "h",
+      xlim = c(0, x$T_max),
+      ylim = c(0, max(x$marks, na.rm = TRUE)),
+      xlab = "Time (t)",
+      ylab = "Mark (m)",
+      main = "Mark Magnitudes",
+    )
+
+    points(
+      x$H_t,
+      x$marks,
+      pch = 21,
+      bg = "slategrey",
+      col = "black",
+      cex = 0.8
+    )
+  } else {
+    graphics::mtext(m_text, side = 3, line = 0.2, cex = 0.8)
+  }
 
   invisible(x)
 }

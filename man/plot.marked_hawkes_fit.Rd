@@ -4,10 +4,13 @@
 \alias{plot.marked_hawkes_fit}
 \title{Plot a Fitted Marked Hawkes Process}
 \usage{
-\method{plot}{marked_hawkes_fit}(x, n_grid = 1000, ...)
+\method{plot}{marked_hawkes_fit}(x, show_marks = TRUE, n_grid = 1000, ...)
 }
 \arguments{
 \item{x}{An object of class \code{marked_hawkes_fit}.}
+
+\item{show_marks}{Boolean. If \code{TRUE} displays mark magnitude plot below
+fitted intensity}
 
 \item{n_grid}{Integer. The number of points used to calculate the
 intensity curve. Default is 1000.}
