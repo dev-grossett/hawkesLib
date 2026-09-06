@@ -1060,6 +1060,8 @@ unscale_chain <- function(chain, time_scale) {
 #' @param n_grid Integer; number of automatically generated grid points.
 #' @param ci_level Numeric in (0, 1); posterior credible-band level.
 #' @param n_spaghetti Integer; number of posterior draws to plot.
+#' @param stat Character; \code{"mean"} or \code{"median"}. The posterior
+#'   statistic to plot.
 #' @param true_kernel Function or \code{NULL}; optional reference kernel to
 #'   overlay.
 #' @param panel Character; \code{"both"}, \code{"summary"}, or
@@ -1086,12 +1088,14 @@ plot_hawkes_kernel <- function(
   n_grid = 200,
   ci_level = 0.90,
   n_spaghetti = 500,
+  stat = c("Mean", "Median"),
   true_kernel = NULL,
   panel = c("both", "summary", "spaghetti"),
   legend = TRUE,
   seed = NULL
 ) {
   kernel <- match.arg(kernel)
+  stat <- match.arg(stat)
   panel <- match.arg(panel)
 
   # ---- assemble posterior draws into a single matrix -----------------------
@@ -1203,8 +1207,15 @@ plot_hawkes_kernel <- function(
   # ---- posterior summaries ---------------------------------------------------
   tail_p <- (1 - ci_level) / 2
   kernel_mean <- colMeans(kernel_draws)
+  kernel_median <- apply(kernel_draws, 2, quantile, probs = 0.5)
   kernel_lower <- apply(kernel_draws, 2, quantile, probs = tail_p)
   kernel_upper <- apply(kernel_draws, 2, quantile, probs = 1 - tail_p)
+
+  if (stat == "Mean") {
+    kernel_summ <- kernel_mean
+  } else {
+    kernel_summ <- kernel_median
+  }
 
   # ---- plotting ---------------------------------------------------------------
   if (panel == "both") {
@@ -1224,7 +1235,7 @@ plot_hawkes_kernel <- function(
   if (panel %in% c("both", "summary")) {
     plot(
       x_grid,
-      kernel_mean,
+      kernel_summ,
       type = "l",
       lwd = 2,
       ylim = y_lim,
@@ -1246,7 +1257,7 @@ plot_hawkes_kernel <- function(
 
     if (legend) {
       legend_labels <- c(
-        "Mean",
+        stat,
         paste0(round(ci_level * 100), "% Credible Interval")
       )
       legend_col <- c("black", "black")
@@ -1333,6 +1344,7 @@ plot_hawkes_kernel <- function(
     x_grid = x_grid,
     kernel_draws = kernel_draws,
     kernel_mean = kernel_mean,
+    kernel_median = kernel_median,
     kernel_lower = kernel_lower,
     kernel_upper = kernel_upper
   ))

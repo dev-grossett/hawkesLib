@@ -12,6 +12,7 @@ plot_hawkes_kernel(
   n_grid = 200,
   ci_level = 0.9,
   n_spaghetti = 500,
+  stat = c("Mean", "Median"),
   true_kernel = NULL,
   panel = c("both", "summary", "spaghetti"),
   legend = TRUE,
@@ -35,6 +36,9 @@ from \code{x_max} and \code{n_grid}.}
 \item{ci_level}{Numeric in (0, 1); posterior credible-band level.}
 
 \item{n_spaghetti}{Integer; number of posterior draws to plot.}
+
+\item{stat}{Character; \code{"mean"} or \code{"median"}. The posterior
+statistic to plot.}
 
 \item{true_kernel}{Function or \code{NULL}; optional reference kernel to
 overlay.}
