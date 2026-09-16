@@ -15,7 +15,10 @@ logpost_theta_k(
   z,
   s,
   C_fun,
-  kernel = c("step", "pwlin")
+  kernel = c("step", "pwlin"),
+  marks,
+  kappa = 0,
+  mark_time_rescaling = FALSE
 )
 }
 \arguments{
@@ -41,6 +44,14 @@ logpost_theta_k(
 \code{w} and \code{theta}.}
 
 \item{kernel}{Character; \code{"step"} or \code{"pwlin"}.}
+
+\item{marks}{Numeric vector; event marks.}
+
+\item{kappa}{Numeric; value of mark time rescaling paramter. Default to zero
+(no rescaling)}
+
+\item{mark_time_rescaling}{whether to enable mark-dependent temporal
+rescaling of the excitation kernel. Default \code{FALSE}.}
 }
 \value{
 Numeric; log full conditional density, or \code{-Inf} for an

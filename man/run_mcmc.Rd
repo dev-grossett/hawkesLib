@@ -23,7 +23,8 @@ run_mcmc(
   adapt_start = 1,
   adapt_end = floor(n_iter/2),
   adapt_interval = 100,
-  target_accept = 0.3
+  target_accept = 0.3,
+  mark_time_rescaling = FALSE
 )
 }
 \arguments{
@@ -69,6 +70,9 @@ with \code{saveRDS}.}
 \item{adapt_interval}{Integer; iterations between adaptations.}
 
 \item{target_accept}{Numeric; target Metropolis acceptance rate. Default 0.30.}
+
+\item{mark_time_rescaling}{Logical; whether to enable mark-dependent temporal
+rescaling of the excitation kernel. Default \code{FALSE}.}
 }
 \value{
 List containing the fitted \code{chains}, \code{time_scale},
