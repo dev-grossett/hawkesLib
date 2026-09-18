@@ -1066,6 +1066,7 @@ unscale_chain <- function(chain, time_scale) {
 #'   overlay.
 #' @param panel Character; \code{"both"}, \code{"summary"}, or
 #'   \code{"spaghetti"}.
+#' @param title Logical; whether to put an auto generated title
 #' @param legend Logical; whether to display the plot legend.
 #' @param seed Integer or \code{NULL}; seed for posterior-draw subsampling.
 #'
@@ -1091,6 +1092,7 @@ plot_hawkes_kernel <- function(
   stat = c("Mean", "Median"),
   true_kernel = NULL,
   panel = c("both", "summary", "spaghetti"),
+  title = TRUE,
   legend = TRUE,
   seed = NULL
 ) {
@@ -1241,13 +1243,17 @@ plot_hawkes_kernel <- function(
       ylim = y_lim,
       xlab = "x",
       ylab = "f(x)",
-      main = paste0(
-        "Posterior kernel (",
-        kernel,
-        "), ",
-        round(ci_level * 100),
-        "% CI"
-      )
+      main = if (title) {
+        paste0(
+          "Posterior kernel (",
+          kernel,
+          "), ",
+          round(ci_level * 100),
+          "% CI"
+        )
+      } else {
+        NULL
+      }
     )
     lines(x_grid, kernel_lower, lty = 2)
     lines(x_grid, kernel_upper, lty = 2)
@@ -1310,7 +1316,11 @@ plot_hawkes_kernel <- function(
       xlab = "x",
       ylab = "f(x)",
       ylim = y_lim,
-      main = paste0("Posterior kernel draws (", kernel, ")")
+      main = if (title) {
+        paste0("Posterior kernel draws (", kernel, ")")
+      } else {
+        NULL
+      }
     )
     if (!is.null(true_kernel)) {
       lines(x_grid, true_kernel(x_grid), lwd = 3, col = "red")

@@ -15,6 +15,7 @@ plot_hawkes_kernel(
   stat = c("Mean", "Median"),
   true_kernel = NULL,
   panel = c("both", "summary", "spaghetti"),
+  title = TRUE,
   legend = TRUE,
   seed = NULL
 )
@@ -45,6 +46,8 @@ overlay.}
 
 \item{panel}{Character; \code{"both"}, \code{"summary"}, or
 \code{"spaghetti"}.}
+
+\item{title}{Logical; whether to put an auto generated title}
 
 \item{legend}{Logical; whether to display the plot legend.}
 
