@@ -358,6 +358,7 @@ plot_residuals <- function(object) {
 
   max_val <- max(stats::qexp(stats::ppoints(n)), gaps) * 1.05
 
+  par(pty = "s")
   plot_base_canvas(
     xlim = c(0, max_val),
     ylim = c(0, max_val),
