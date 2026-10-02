@@ -19,7 +19,8 @@ run_simulation_study(
   proposal_sds = default_proposal_sds(),
   ci_level = 0.95,
   progress = FALSE,
-  verbose = TRUE
+  verbose = TRUE,
+  ...
 )
 }
 \arguments{
@@ -55,6 +56,8 @@ from each chain before summarising.}
 \item{progress}{Logical; whether to display MCMC progress.}
 
 \item{verbose}{Logical; whether to print replicate progress.}
+
+\item{...}{Additional arguments passed to \code{run_mcmc}.}
 }
 \value{
 A list containing:

@@ -69,15 +69,13 @@ update_zs <- function(
     return(list(z = z, s = s))
   }
 
-  marks_c <- marks - mean(marks)
-
   for (i in 2:n) {
     # Time since each possible parent event
     dt <- times[i] - times[1:(i - 1)]
 
     # Optional mark time rescaling modelling extension
     if (mark_time_rescaling) {
-      psi <- exp(kappa * marks_c[1:(i - 1)])
+      psi <- exp(kappa * marks[1:(i - 1)])
     } else {
       psi <- rep(1, i - 1)
     }
@@ -191,8 +189,6 @@ logpost_theta_k <- function(
 
   theta_k <- exp(log_theta_k)
 
-  marks_c <- marks - mean(marks)
-
   # Proposed atom locations
   theta_prop <- theta
   theta_prop[k] <- theta_k
@@ -211,7 +207,7 @@ logpost_theta_k <- function(
   dt_own <- dt_O[own]
 
   if (mark_time_rescaling) {
-    psi_own <- exp(kappa * marks_c[z[O_idx][own]])
+    psi_own <- exp(kappa * marks[z[O_idx][own]])
   } else {
     psi_own <- rep(1, length(dt_own))
   }
@@ -351,12 +347,11 @@ logpost_kappa <- function(
   sd_kappa,
   kernel
 ) {
-  marks_c <- marks - mean(marks)
-  parent_marks_c <- marks_c[z[O_idx]]
+  parent_marks <- marks[z[O_idx]]
   dt_O <- times[O_idx] - times[z[O_idx]]
   theta_O <- theta[s[O_idx]]
 
-  psi <- exp(kappa * parent_marks_c)
+  psi <- exp(kappa * parent_marks)
 
   if (kernel == "step") {
     if (any(dt_O >= psi * theta_O)) {
@@ -376,7 +371,7 @@ logpost_kappa <- function(
   }
 
   log_lik <-
-    -(1 + q) * kappa * sum(parent_marks_c) + log_g
+    -(1 + q) * kappa * sum(parent_marks) + log_g
 
   log_prior <-
     -(kappa - mu_kappa)^2 / (2 * sd_kappa^2)
@@ -517,7 +512,6 @@ run_sampler <- function(
   # some preliminary calculations
   N_T <- length(times)
   K <- length(init$theta)
-  marks_c <- marks - mean(marks)
 
   # Proposal SDs can be supplied either as a single value or as a separate value
   # for each parameter.
@@ -741,7 +735,7 @@ run_sampler <- function(
     # kappa: optional mark time rescaling parameter
     if (mark_time_rescaling) {
       if (kernel == "step") {
-        parent_X <- marks_c[z[O_idx]]
+        parent_X <- marks[z[O_idx]]
         dt_O <- times[O_idx] - times[z[O_idx]]
         theta_O <- theta[s[O_idx]]
 

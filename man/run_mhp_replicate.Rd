@@ -16,7 +16,8 @@ run_mhp_replicate(
   sim_seed = NULL,
   prior_params = default_prior_params(),
   proposal_sds = default_proposal_sds(),
-  progress = FALSE
+  progress = FALSE,
+  ...
 )
 }
 \arguments{
@@ -47,6 +48,8 @@ run_mhp_replicate(
 \code{\link{run_mcmc}}.}
 
 \item{progress}{Logical; whether to display MCMC progress.}
+
+\item{...}{Additional arguments passed to \code{run_mcmc}.}
 }
 \value{
 A list containing the simulated data in \code{$sim} and the fitted
