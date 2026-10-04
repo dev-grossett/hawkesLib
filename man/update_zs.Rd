@@ -16,7 +16,8 @@ update_zs(
   kernel = c("step", "pwlin"),
   mark_productivity = c("linear", "exponential"),
   kappa = 0,
-  mark_time_rescaling = FALSE
+  mark_time_rescaling = FALSE,
+  theta_max = NULL
 )
 }
 \arguments{
@@ -44,7 +45,10 @@ update_zs(
 (no rescaling)}
 
 \item{mark_time_rescaling}{whether to enable mark-dependent temporal
-rescaling of the excitation kernel. Default \code{FALSE}.}
+rescaling of the excitation kernel. Default \code{FALSE}..}
+
+\item{theta_max}{Numeric; if not NULL then is the end of the finite support of the
+Hawkes kernel, \eqn{[0, \theta_{max}]}}
 }
 \value{
 List with integer vectors \code{z} (parent indices, with 0 for

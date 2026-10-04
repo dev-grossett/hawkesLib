@@ -24,7 +24,8 @@ run_mcmc(
   adapt_end = floor(n_iter/2),
   adapt_interval = 100,
   target_accept = 0.3,
-  mark_time_rescaling = FALSE
+  mark_time_rescaling = FALSE,
+  theta_max = NULL
 )
 }
 \arguments{
@@ -73,6 +74,9 @@ with \code{saveRDS}.}
 
 \item{mark_time_rescaling}{Logical; whether to enable mark-dependent temporal
 rescaling of the excitation kernel. Default \code{FALSE}.}
+
+\item{theta_max}{Numeric; if not NULL then is the end of the finite support of the
+Hawkes kernel, \eqn{[0, \theta_{max}]}}
 }
 \value{
 List containing the fitted \code{chains}, \code{time_scale},
