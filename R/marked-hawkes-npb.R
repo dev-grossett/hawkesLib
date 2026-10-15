@@ -1492,7 +1492,7 @@ plot_hawkes_kernel <- function(
   V <- samples[, v_cols, drop = FALSE] # n_draws x (K-1)
   A <- samples[, "A"] # n_draws
   n_draws <- nrow(samples)
-  
+
   if (mark_time_rescaling && is.null(mark)) {
     stop("`mark_time_rescaling = TRUE` requires a numeric `mark`.")
   }
@@ -1500,12 +1500,17 @@ plot_hawkes_kernel <- function(
     if (!is.numeric(mark) || length(mark) != 1) {
       stop("`mark` must be NULL or a single numeric value.")
     }
-    need <- c("A", if (mark_productivity == "exponential") "beta",
-              if (mark_time_rescaling) "kappa")
+    need <- c(
+      "A",
+      if (mark_productivity == "exponential") "beta",
+      if (mark_time_rescaling) "kappa"
+    )
     missing_cols <- setdiff(need, colnames(samples))
     if (length(missing_cols) > 0) {
-      stop("Samples matrix is missing column(s): ",
-           paste(missing_cols, collapse = ", "))
+      stop(
+        "Samples matrix is missing column(s): ",
+        paste(missing_cols, collapse = ", ")
+      )
     }
     eta <- if (mark_productivity == "exponential") {
       samples[, "A"] * exp(samples[, "beta"] * mark)
@@ -1515,9 +1520,13 @@ plot_hawkes_kernel <- function(
   } else {
     eta <- rep(1, n_draws)
   }
-  
-  # per-draw time scale s_i = exp(-kappa_i * m) 
-  psi <- if (mark_time_rescaling) exp(samples[, "kappa"] * mark) else rep(1, n_draws)
+
+  # per-draw time scale s_i = exp(-kappa_i * m)
+  psi <- if (mark_time_rescaling) {
+    exp(samples[, "kappa"] * mark)
+  } else {
+    rep(1, n_draws)
+  }
 
   # ---- stick-breaking weights + kernel normalisation, vectorised over draws -
   one_minus_v <- 1 - V
@@ -1574,7 +1583,8 @@ plot_hawkes_kernel <- function(
           function(x) tail_mass(x) - tail_tol,
           interval = c(0, max(theta_i)),
           tol = 1e-8
-        )$root * psi[i]
+        )$root *
+          psi[i]
       }
 
       # Use a high posterior quantile so that the plotting range
@@ -1631,8 +1641,8 @@ plot_hawkes_kernel <- function(
       type = "l",
       lwd = 2,
       ylim = y_lim,
-      xlab = "x",
-      ylab = "f(x)",
+      xlab = expression(tau ~ (days)),
+      ylab = expression(f(tau)),
       main = if (title & is.null(mark)) {
         paste0(
           "Posterior kernel (",
@@ -1705,8 +1715,8 @@ plot_hawkes_kernel <- function(
       type = "l",
       lty = 1,
       col = rgb(0, 0, 0, 0.1),
-      xlab = "x",
-      ylab = "f(x)",
+      xlab = expression(tau ~ (days)),
+      ylab = expression(f(tau)),
       ylim = y_lim,
       main = if (title) {
         paste0("Posterior kernel draws (", kernel, ")")
@@ -2083,7 +2093,7 @@ compute_hawkes_metrics <- function(
 ) {
   kernel <- match.arg(kernel)
   mark_productivity <- match.arg(mark_productivity)
-  
+
   if (mark_time_rescaling && !"kappa" %in% colnames(samples)) {
     stop("`mark_time_rescaling = TRUE` but `samples` has no `kappa` column.")
   }
@@ -2139,10 +2149,10 @@ compute_hawkes_metrics <- function(
       beta <- draw["beta"]
       eta <- A * exp(beta * marks)
     }
-    
+
     if (mark_time_rescaling) {
-      psi <- exp(draw["kappa"] * marks)            
-      dt_use <- dt_mat / rep(psi, each = n)        
+      psi <- exp(draw["kappa"] * marks)
+      dt_use <- dt_mat / rep(psi, each = n)
     } else {
       psi <- rep(1, n)
       dt_use <- dt_mat
