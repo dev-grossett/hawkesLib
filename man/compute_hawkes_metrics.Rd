@@ -12,7 +12,8 @@ compute_hawkes_metrics(
   kernel = c("step", "pwlin"),
   mark_productivity = c("linear", "exponential"),
   burn_in = 0.5,
-  max_eval_samples = 1000
+  max_eval_samples = 1000,
+  mark_time_rescaling = FALSE
 )
 }
 \arguments{
@@ -31,6 +32,10 @@ compute_hawkes_metrics(
 \item{burn_in}{Proportion of MCMC iterations to discard (0 to 1).}
 
 \item{max_eval_samples}{Maximum number of posterior draws to evaluate.}
+
+\item{mark_time_rescaling}{Logical; if \code{TRUE}, the kernel of event j is
+rescaled as (1/psi_j) f(t/psi_j) with psi_j = exp(kappa * marks\link{j}), using
+the \code{kappa} column of \code{samples}.}
 }
 \value{
 List containing \code{waic} object, \code{loo} object, and the raw \code{log_lik_matrix}.

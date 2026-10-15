@@ -29,6 +29,14 @@
 #' @param marks Numeric vector; event marks.
 #' @param kernel Character; \code{"step"} or \code{"pwlin"}.
 #' @param mark_productivity Character; \code{"linear"} or \code{"exponential"}.
+#' @param kappa Numeric; value of mark time rescaling paramter. Default to zero
+#'   (no rescaling)
+#' @param mark_time_rescaling whether to enable mark-dependent temporal
+#'   rescaling of the excitation kernel. Default \code{FALSE}..
+#' @param theta_max Numeric; if not NULL then is the end of the finite support of the
+#'   Hawkes kernel, \eqn{[0, \theta_{max}]}
+#'
+#'
 #'
 #' @return List with integer vectors \code{z} (parent indices, with 0 for
 #'   immigrants) and \code{s} (kernel-component allocations).
@@ -44,7 +52,10 @@ update_zs <- function(
   times,
   marks,
   kernel = c("step", "pwlin"),
-  mark_productivity = c("linear", "exponential")
+  mark_productivity = c("linear", "exponential"),
+  kappa = 0,
+  mark_time_rescaling = FALSE,
+  theta_max = NULL
 ) {
   kernel <- match.arg(kernel)
   mark_productivity <- match.arg(mark_productivity)
@@ -62,22 +73,64 @@ update_zs <- function(
     return(list(z = z, s = s))
   }
 
+  if (mark_time_rescaling) {
+    psi_all <- exp(kappa * marks)
+    max_support <- if (!is.null(theta_max)) {
+      theta_max * max(psi_all)
+    } else {
+      Inf
+    }
+  } else {
+    psi_all <- rep(1, n)
+    max_support <- if (!is.null(theta_max)) theta_max else Inf
+  }
+
   for (i in 2:n) {
-    # Time since each possible parent event
-    dt <- times[i] - times[1:(i - 1)]
+    # If we have a finite support then we can help speed this up by reducing the size of
+    # matrices and vectors to valid parents only
+    if (!is.null(theta_max)) {
+      # Restrict to parents that could possibly be within the maximum kernel support
+      j_start <- findInterval(times[i] - max_support, times[1:(i - 1)]) + 1
+
+      # No possible parents -> immigrant
+      if (j_start > i - 1) {
+        z[i] <- 0
+        s[i] <- NA_integer_
+        next
+      }
+      # Otherwise, these are the only possible parents
+      parent_idx <- j_start:(i - 1)
+
+      # Parent-specific support after mark rescaling
+      dt <- times[i] - times[parent_idx]
+      psi <- psi_all[parent_idx]
+
+      valid_parent <- dt < psi * theta_max
+
+      if (!any(valid_parent)) {
+        z[i] <- 0
+        s[i] <- NA_integer_
+        next
+      }
+
+      parent_idx <- parent_idx[valid_parent]
+      dt <- dt[valid_parent]
+      psi <- psi[valid_parent]
+    } else {
+      parent_idx <- 1:(i - 1)
+      dt <- times[i] - times[parent_idx]
+      psi <- psi_all[parent_idx]
+    }
+
+    theta_scaled <- outer(psi, theta, "*")
 
     # Matrix of basis-function values:
-    # rows = possible parents j = i - 1
+    # rows = possible parents
     # columns = mixture components k
     if (kernel == "step") {
-      g <- dt < matrix(theta, nrow = i - 1, ncol = length(theta), byrow = TRUE)
-    } else if (kernel == "pwlin") {
-      g <- pmax(
-        outer(dt, theta, FUN = function(dt, theta) {
-          theta - dt
-        }),
-        0
-      )
+      g <- dt < theta_scaled
+    } else {
+      g <- pmax(theta_scaled - dt, 0)
     }
 
     # Find valid (parent, component) combinations
@@ -91,19 +144,27 @@ update_zs <- function(
     }
 
     # Map matrix coordinates back to parent and component
-    parent_idx <- active_flat_idx[, 1]
+    parent_row_idx <- active_flat_idx[, 1]
     comp_idx <- active_flat_idx[, 2]
+
+    # Original event indices of the selected parents
+    parent_event_idx <- parent_idx[parent_row_idx]
+
+    q <- if (kernel == "pwlin") 1 else 0
+    psi_factor <- psi^(-(1 + q))
 
     # Offspring probabilities
     if (mark_productivity == "linear") {
       offspring_probs <- A *
-        marks[parent_idx] *
+        marks[parent_event_idx] *
+        psi_factor[parent_row_idx] *
         w[comp_idx] *
         g[active_flat_idx] /
         C
-    } else if (mark_productivity == "exponential") {
+    } else {
       offspring_probs <- A *
-        exp(beta * marks[parent_idx]) *
+        exp(beta * marks[parent_event_idx]) *
+        psi_factor[parent_row_idx] *
         w[comp_idx] *
         g[active_flat_idx] /
         C
@@ -118,7 +179,14 @@ update_zs <- function(
 
     if (draw > 1) {
       idx <- draw - 1
-      z[i] <- parent_idx[idx]
+
+      # Map flattened index back to parent row and component
+      parent_row <- parent_row_idx[idx]
+
+      # Convert reduced-matrix row to original event index
+      z[i] <- parent_idx[parent_row]
+
+      # Selected mixture component
       s[i] <- comp_idx[idx]
     }
   }
@@ -143,6 +211,13 @@ update_zs <- function(
 #' @param C_fun Function; computes the kernel normalising constant from
 #'   \code{w} and \code{theta}.
 #' @param kernel Character; \code{"step"} or \code{"pwlin"}.
+#' @param marks Numeric vector; event marks.
+#' @param kappa Numeric; value of mark time rescaling paramter. Default to zero
+#'   (no rescaling)
+#' @param mark_time_rescaling whether to enable mark-dependent temporal
+#'   rescaling of the excitation kernel. Default \code{FALSE}.
+#' @param theta_max Numeric; if not NULL then is the end of the finite support of the
+#'   Hawkes kernel, \eqn{[0, \theta_{max}]}
 #'
 #' @return Numeric; log full conditional density, or \code{-Inf} for an
 #'   invalid proposal.
@@ -159,12 +234,22 @@ logpost_theta_k <- function(
   z,
   s,
   C_fun,
-  kernel = c("step", "pwlin")
+  kernel = c("step", "pwlin"),
+  marks,
+  kappa = 0,
+  mark_time_rescaling = FALSE,
+  theta_max = NULL
 ) {
   kernel <- match.arg(kernel)
 
   theta_k <- exp(log_theta_k)
 
+  # Enforce finite support if that option is chosen
+  if (!is.null(theta_max)) {
+    if (theta_k <= 0 || theta_k >= theta_max) {
+      return(-Inf)
+    }
+  }
   # Proposed atom locations
   theta_prop <- theta
   theta_prop[k] <- theta_k
@@ -182,13 +267,19 @@ logpost_theta_k <- function(
   own <- (s_O == k)
   dt_own <- dt_O[own]
 
+  if (mark_time_rescaling) {
+    psi_own <- exp(kappa * marks[z[O_idx][own]])
+  } else {
+    psi_own <- rep(1, length(dt_own))
+  }
+
   if (kernel == "step") {
-    if (any(theta_k <= dt_own)) {
+    if (any(psi_own * theta_k <= dt_own)) {
       return(-Inf)
     }
     log_g_own_sum <- 0 # log(1) for every satisfied step-indicator
-  } else if (kernel == "pwlin") {
-    g_own <- theta_k - dt_own
+  } else {
+    g_own <- psi_own * theta_k - dt_own
     if (any(g_own <= 0)) {
       return(-Inf)
     }
@@ -200,7 +291,11 @@ logpost_theta_k <- function(
   ll_sum <- sum(log(w[s_O])) + log_g_own_sum - length(O_idx) * log(C_prop)
 
   # Return posterior + log-Jacobian
-  return(ll_sum - phi * theta_k + log_theta_k)
+  if (is.null(theta_max)) {
+    return(ll_sum - phi * theta_k + log_theta_k)
+  } else {
+    return(ll_sum + log_theta_k)
+  }
 }
 
 
@@ -287,6 +382,75 @@ logpost_beta <- function(beta, A, marks, sum_M_off, mu_beta, sd_beta) {
 }
 
 
+#' Log full conditional for the mark time recaling parameter.
+#'
+#' Evaluates the log full conditional of \code{kappa}.
+#'
+#' @param kappa Numeric; proposed mark time recaling parameter.
+#' @param marks Numeric vector; event marks.
+#' @param times Numeric vector; event times.
+#' @param O_idx Integer vector; offspring-event indices.
+#' @param z Integer vector; parent indices.
+#' @param s Integer vector; kernel-component allocations.
+#' @param theta  Numeric vector; kernel atom locations.
+#' @param mu_kappa Numeric; Normal prior mean.
+#' @param sd_kappa Numeric; Normal prior standard deviation.
+#' @param kernel Character; \code{"step"} or \code{"pwlin"}.
+#'
+#' @return Numeric; log full conditional density at \code{kappa}.
+#'
+#' @keywords internal
+logpost_kappa <- function(
+  kappa,
+  marks,
+  times,
+  O_idx,
+  z,
+  s,
+  theta,
+  mu_kappa,
+  sd_kappa,
+  kernel
+) {
+  # Extract parent marks, parent-offspring time differences, and allocated kernel atoms
+  parent_marks <- marks[z[O_idx]]
+  dt_O <- times[O_idx] - times[z[O_idx]]
+  theta_O <- theta[s[O_idx]]
+
+  # Calculate mark-dependent time rescaling
+  psi <- exp(kappa * parent_marks)
+
+  if (kernel == "step") {
+    # Reject proposals placing any offspring outside its kernel support
+    if (any(dt_O >= psi * theta_O)) {
+      return(-Inf)
+    }
+    log_g <- 0
+    q <- 0
+  } else {
+    # Evaluate the piecewise-linear kernel contribution
+    g <- psi * theta_O - dt_O
+
+    # Reject proposals outside the kernel support
+    if (any(g <= 0)) {
+      return(-Inf)
+    }
+
+    log_g <- sum(log(g))
+    q <- 1
+  }
+
+  # Calculate the log likelihood contribution
+  log_lik <- -(1 + q) * sum(log(psi)) + log_g
+
+  # Add the Normal prior contribution
+  log_prior <- -(kappa - mu_kappa)^2 / (2 * sd_kappa^2)
+
+  # Return the unnormalised log full conditionals
+  log_lik + log_prior
+}
+
+
 #' Run one marked-Hawkes MCMC chain
 #'
 #' Runs a Metropolis-within-Gibbs sampler for one marked Hawkes process chain.
@@ -311,6 +475,10 @@ logpost_beta <- function(beta, A, marks, sum_M_off, mu_beta, sd_beta) {
 #' @param adapt_end Integer; last iteration eligible for adaptation.
 #' @param adapt_interval Integer; number of iterations between adaptations.
 #' @param target_accept Numeric; target Metropolis acceptance rate.
+#' @param mark_time_rescaling whether to enable mark-dependent temporal
+#'   rescaling of the excitation kernel. Default \code{FALSE}.
+#' @param theta_max Numeric; if not NULL then is the end of the finite support of the
+#'   Hawkes kernel, \eqn{[0, \theta_{max}]}
 #'
 #' @return List containing:
 #'   \describe{
@@ -322,6 +490,7 @@ logpost_beta <- function(beta, A, marks, sum_M_off, mu_beta, sd_beta) {
 #'   }
 #'
 #' @keywords internal
+#' @importFrom truncnorm rtruncnorm
 #' @export
 run_sampler <- function(
   times,
@@ -338,35 +507,44 @@ run_sampler <- function(
   adapt_start = 1,
   adapt_end = floor(n_iter / 2),
   adapt_interval = 100,
-  target_accept = 0.3
+  target_accept = 0.3,
+  mark_time_rescaling = FALSE,
+  theta_max = NULL
 ) {
   kernel <- match.arg(kernel)
   mark_productivity <- match.arg(mark_productivity)
 
   samples <- matrix(NA, n_iter, sum(lengths(init)))
+  n_extra <- if (mark_time_rescaling) 1 else 0
 
   if (mark_productivity == "linear") {
-    acceptance <- matrix(NA, n_iter, length(init$theta) + length(init$v))
-    # proposals <- matrix(c(length(init$theta), length(init$v)),
-    #                     n_iter, 2, byrow = TRUE)
+    acceptance <- matrix(
+      NA,
+      n_iter,
+      length(init$theta) + length(init$v) + n_extra
+    )
     colnames(samples) <- c(
       "lambda0",
       "A",
       paste0("theta", 1:(length(init$theta))),
       paste0("v", 1:(length(init$v))),
       "alpha",
-      "phi",
-      "gamma"
+      if (is.null(theta_max)) "phi",
+      "gamma",
+      if (mark_time_rescaling) "kappa"
     )
     colnames(acceptance) <- c(
       paste0("theta", 1:length(init$theta)),
-      paste0("v", 1:length(init$v))
+      paste0("v", 1:length(init$v)),
+      if (mark_time_rescaling) "kappa"
     )
     # colnames(proposals) <- c("theta", "v")
-  } else if (mark_productivity == "exponential") {
-    acceptance <- matrix(NA, n_iter, length(init$theta) + length(init$v) + 1)
-    # proposals <- matrix(c(length(init$theta), length(init$v), 1),
-    #                     n_iter, 3, byrow = TRUE)
+  } else {
+    acceptance <- matrix(
+      NA,
+      n_iter,
+      length(init$theta) + length(init$v) + 1 + n_extra
+    )
     colnames(samples) <- c(
       "lambda0",
       "A",
@@ -374,18 +552,21 @@ run_sampler <- function(
       paste0("theta", 1:(length(init$theta))),
       paste0("v", 1:(length(init$v))),
       "alpha",
-      "phi",
-      "gamma"
+      if (is.null(theta_max)) "phi",
+      "gamma",
+      if (mark_time_rescaling) "kappa"
     )
     colnames(acceptance) <- c(
       paste0("theta", 1:length(init$theta)),
       paste0("v", 1:length(init$v)),
-      "beta"
+      "beta",
+      if (mark_time_rescaling) "kappa"
     )
-    # colnames(proposals) <- c("theta", "v", "beta")
   }
   n_immigrant <- numeric(n_iter)
   n_offspring <- numeric(n_iter)
+  mean_parent_mark <- numeric(n_iter)
+  kernel_scale <- numeric(n_iter)
 
   # initialise
   lambda0 <- init$lambda0
@@ -393,10 +574,15 @@ run_sampler <- function(
   theta <- init$theta
   v <- init$v
   alpha <- init$alpha
-  phi <- init$phi
+  if (is.null(theta_max)) {
+    phi <- init$phi
+  }
   gamma <- init$gamma
   if (mark_productivity == "exponential") {
     beta <- init$beta
+  }
+  if (mark_time_rescaling) {
+    kappa <- init$kappa
   }
 
   # some preliminary calculations
@@ -409,6 +595,9 @@ run_sampler <- function(
   v_proposal_sds <- rep(proposal_sds$v_k, length.out = K - 1)
   if (mark_productivity == "exponential") {
     beta_proposal_sd <- proposal_sds$beta
+  }
+  if (mark_time_rescaling) {
+    kappa_proposal_sd <- proposal_sds$kappa
   }
 
   # Stick-break weights
@@ -441,34 +630,43 @@ run_sampler <- function(
     batch_accept_beta <- 0
     batch_proposals_beta <- 0
   }
+  if (mark_time_rescaling) {
+    batch_accept_kappa <- 0
+    batch_proposals_kappa <- 0
+  }
 
   for (iter in 1:n_iter) {
     # resample latent parameters
     if (mark_productivity == "linear") {
       zs <- update_zs(
-        lambda0,
-        A,
-        NULL,
-        w,
-        C,
-        theta,
-        times,
-        marks,
-        kernel,
-        mark_productivity
+        lambda0 = lambda0,
+        A = A,
+        beta = NULL,
+        w = w,
+        C = C,
+        theta = theta,
+        times = times,
+        marks = marks,
+        kernel = kernel,
+        mark_productivity = mark_productivity,
+        kappa = kappa,
+        mark_time_rescaling = mark_time_rescaling,
+        theta_max = theta_max
       )
     } else {
       zs <- update_zs(
-        lambda0,
-        A,
-        beta,
-        w,
-        C,
-        theta,
-        times,
-        marks,
-        kernel,
-        mark_productivity
+        lambda0 = lambda0,
+        A = A,
+        beta = beta,
+        w = w,
+        C = C,
+        theta = theta,
+        times = times,
+        marks = marks,
+        kernel = kernel,
+        mark_productivity = mark_productivity,
+        kappa = kappa,
+        mark_time_rescaling = mark_time_rescaling
       )
     }
     z <- zs$z
@@ -491,6 +689,16 @@ run_sampler <- function(
 
     n_immigrant[iter] <- n_imm
     n_offspring[iter] <- n_off
+
+    mean_parent_mark[iter] <- if (length(O_idx) > 0) {
+      mean(marks[z[O_idx]])
+    } else {
+      NA_real_
+    }
+
+    if (!is.finite(lambda0) || lambda0 <= 0) {
+      stop("Iter", iter, ": Invalid lambda0 before update_zs(): ", lambda0)
+    }
 
     # lambda0
     lambda0 <- rgamma(
@@ -551,30 +759,38 @@ run_sampler <- function(
       current <- log(theta[k_theta])
       proposal <- rnorm(1, current, theta_proposal_sds[k_theta])
       lp_prop <- logpost_theta_k(
-        proposal,
-        k_theta,
-        w,
-        theta,
-        phi,
-        times,
-        O_idx,
-        z,
-        s,
-        C_fun,
-        kernel
+        log_theta_k = proposal,
+        k = k_theta,
+        w = w,
+        theta = theta,
+        phi = if (is.null(theta_max)) phi else NULL,
+        times = times,
+        O_idx = O_idx,
+        z = z,
+        s = s,
+        C_fun = C_fun,
+        kernel = kernel,
+        marks = marks,
+        kappa = kappa,
+        mark_time_rescaling = mark_time_rescaling,
+        theta_max = theta_max
       )
       lp_curr <- logpost_theta_k(
-        current,
-        k_theta,
-        w,
-        theta,
-        phi,
-        times,
-        O_idx,
-        z,
-        s,
-        C_fun,
-        kernel
+        log_theta_k = current,
+        k = k_theta,
+        w = w,
+        theta = theta,
+        phi = if (is.null(theta_max)) phi else NULL,
+        times = times,
+        O_idx = O_idx,
+        z = z,
+        s = s,
+        C_fun = C_fun,
+        kernel = kernel,
+        marks = marks,
+        kappa = kappa,
+        mark_time_rescaling = mark_time_rescaling,
+        theta_max = theta_max
       )
 
       # Guard against non-finite log-posteriors so log_acc is never NaN:
@@ -596,6 +812,52 @@ run_sampler <- function(
         batch_proposals_theta[k_theta] <- batch_proposals_theta[k_theta] + 1
         batch_accept_theta[k_theta] <- batch_accept_theta[k_theta] +
           as.integer(accept)
+      }
+    }
+
+    # kappa: optional mark time rescaling parameter
+    if (mark_time_rescaling) {
+      kappa_prop <- rnorm(1, kappa, kappa_proposal_sd)
+
+      lp_prop <- logpost_kappa(
+        kappa = kappa_prop,
+        marks = marks,
+        times = times,
+        O_idx = O_idx,
+        z = z,
+        s = s,
+        theta = theta,
+        mu_kappa = prior_params$mu_kappa,
+        sd_kappa = prior_params$sd_kappa,
+        kernel = kernel
+      )
+
+      lp_curr <- logpost_kappa(
+        kappa = kappa,
+        marks = marks,
+        times = times,
+        O_idx = O_idx,
+        z = z,
+        s = s,
+        theta = theta,
+        mu_kappa = prior_params$mu_kappa,
+        sd_kappa = prior_params$sd_kappa,
+        kernel = kernel
+      )
+
+      accept_kappa <- is.finite(lp_prop) &&
+        (!is.finite(lp_curr) || log(runif(1)) < lp_prop - lp_curr)
+
+      if (accept_kappa) {
+        kappa <- kappa_prop
+      }
+
+      acceptance[iter, "kappa"] <- as.integer(accept_kappa)
+
+      # Adaptation bookkeeping
+      if (adapt && iter >= adapt_start && iter <= adapt_end) {
+        batch_proposals_kappa <- batch_proposals_kappa + 1
+        batch_accept_kappa <- batch_accept_kappa + as.integer(accept_kappa)
       }
     }
 
@@ -689,6 +951,18 @@ run_sampler <- function(
         }
       }
 
+      # ---- kappa ----
+      if (mark_time_rescaling) {
+        if (batch_proposals_kappa > 0) {
+          kappa_rate <- batch_accept_kappa / batch_proposals_kappa
+          # smooth log-scale adaptation
+          kappa_proposal_sd <- kappa_proposal_sd *
+            exp(1 * (kappa_rate - target_accept))
+          # apply some lower and upper bounds
+          kappa_proposal_sd <- min(max(kappa_proposal_sd, 0.01), 3)
+        }
+      }
+
       # Reset batch counters
       batch_accept_theta <- numeric(K)
       batch_proposals_theta <- numeric(K)
@@ -698,6 +972,10 @@ run_sampler <- function(
         batch_accept_beta <- 0
         batch_proposals_beta <- 0
       }
+      if (mark_time_rescaling) {
+        batch_accept_kappa <- 0
+        batch_proposals_kappa <- 0
+      }
     }
 
     # recalculate stick-break weights after sampling v_k
@@ -705,6 +983,7 @@ run_sampler <- function(
     w <- c(v, 1) * remaining
     # Scaled to make mu(t)/eta a probability density
     C <- C_fun(w, theta)
+    kernel_scale[iter] <- C
 
     # alpha
     alpha <- rgamma(
@@ -714,11 +993,13 @@ run_sampler <- function(
     )
 
     # phi
-    phi <- rgamma(
-      1,
-      shape = prior_params$a_phi + length(theta),
-      rate = prior_params$b_phi + sum(theta)
-    )
+    if (is.null(theta_max)) {
+      phi <- rgamma(
+        1,
+        shape = prior_params$a_phi + length(theta),
+        rate = prior_params$b_phi + sum(theta)
+      )
+    }
 
     # gamma (rate of the Exponential mark distribution)
     gamma <- rgamma(
@@ -728,9 +1009,28 @@ run_sampler <- function(
     )
 
     if (mark_productivity == "linear") {
-      samples[iter, ] <- c(lambda0, A, theta, v, alpha, phi, gamma)
-    } else if (mark_productivity == "exponential") {
-      samples[iter, ] <- c(lambda0, A, beta, theta, v, alpha, phi, gamma)
+      samples[iter, ] <- c(
+        lambda0,
+        A,
+        theta,
+        v,
+        alpha,
+        if (is.null(theta_max)) phi,
+        gamma,
+        if (mark_time_rescaling) kappa
+      )
+    } else {
+      samples[iter, ] <- c(
+        lambda0,
+        A,
+        beta,
+        theta,
+        v,
+        alpha,
+        if (is.null(theta_max)) phi,
+        gamma,
+        if (mark_time_rescaling) kappa
+      )
     }
 
     if (progress) {
@@ -750,11 +1050,18 @@ run_sampler <- function(
     acceptance_rates = acceptance_rates,
     n_immigrant = n_immigrant,
     n_offspring = n_offspring,
+    mean_parent_mark = mean_parent_mark,
+    kernel_scale = kernel_scale,
     tuned_proposal_sds = list(
       theta_k = theta_proposal_sds,
       v_k = v_proposal_sds,
       beta = if (mark_productivity == "exponential") {
         beta_proposal_sd
+      } else {
+        NULL
+      },
+      kappa = if (mark_time_rescaling) {
+        kappa_proposal_sd
       } else {
         NULL
       }
@@ -795,6 +1102,10 @@ run_sampler <- function(
 #' @param adapt_end Integer; last iteration eligible for adaptation.
 #' @param adapt_interval Integer; iterations between adaptations.
 #' @param target_accept Numeric; target Metropolis acceptance rate. Default 0.30.
+#' @param mark_time_rescaling Logical; whether to enable mark-dependent temporal
+#'   rescaling of the excitation kernel. Default \code{FALSE}.
+#' @param theta_max Numeric; if not NULL then is the end of the finite support of the
+#'   Hawkes kernel, \eqn{[0, \theta_{max}]}
 #'
 #' @return List containing the fitted \code{chains}, \code{time_scale},
 #'   \code{settings}, \code{prior_params}, \code{proposal_sds}, and
@@ -827,7 +1138,9 @@ run_mcmc <- function(
   adapt_start = 1,
   adapt_end = floor(n_iter / 2),
   adapt_interval = 100,
-  target_accept = 0.30
+  target_accept = 0.30,
+  mark_time_rescaling = FALSE,
+  theta_max = NULL
 ) {
   kernel <- match.arg(kernel)
   mark_productivity <- match.arg(mark_productivity)
@@ -852,26 +1165,56 @@ run_mcmc <- function(
       list(
         lambda0 = runif(1, 0.25, 2),
         A = runif(1, 0.2, 2),
-        theta = sort(exp(runif(K, log(0.05), log(5)))),
+        theta = if (is.null(theta_max)) {
+          sort(exp(runif(K, log(0.05), log(5))))
+        } else {
+          runif(0, theta_max)
+        },
         v = rbeta(K - 1, 1, 1),
         alpha = runif(1, 0.5, 2),
-        phi = runif(1, 0.2, 1),
         gamma = runif(1, 0.2, 2)
       )
     })
+    if (mark_time_rescaling) {
+      init_list <- lapply(init_list, function(init) {
+        init$kappa <- rnorm(1, prior_params$mu_kappa, prior_params$sd_kappa)
+        init
+      })
+    }
+    if (is.null(theta_max)) {
+      init_list <- lapply(init_list, function(init) {
+        init$phi <- runif(1, 0.2, 1)
+        init
+      })
+    }
   } else if (mark_productivity == "exponential") {
     init_list <- lapply(seq_len(n_chains), function(i) {
       list(
         lambda0 = runif(1, 0.25, 2),
         A = runif(1, 0.2, 2),
         beta = rnorm(1, 0, 0.5),
-        theta = sort(exp(runif(K, log(0.05), log(5)))),
+        theta = if (is.null(theta_max)) {
+          sort(exp(runif(K, log(0.05), log(5))))
+        } else {
+          sort(runif(K, 0, theta_max))
+        },
         v = rbeta(K - 1, 1, 1),
         alpha = runif(1, 0.5, 2),
-        phi = runif(1, 0.2, 1),
         gamma = runif(1, 0.2, 2)
       )
     })
+    if (mark_time_rescaling) {
+      init_list <- lapply(init_list, function(init) {
+        init$kappa <- rnorm(1, prior_params$mu_kappa, prior_params$sd_kappa)
+        init
+      })
+    }
+    if (is.null(theta_max)) {
+      init_list <- lapply(init_list, function(init) {
+        init$phi <- runif(1, 0.2, 1)
+        init
+      })
+    }
   }
 
   # Create parallel workers
@@ -902,10 +1245,13 @@ run_mcmc <- function(
       "adapt_end",
       "adapt_interval",
       "target_accept",
+      "mark_time_rescaling",
+      "theta_max",
       "run_sampler",
       "logpost_theta_k",
       "logpost_v_k",
       "logpost_beta",
+      "logpost_kappa",
       "update_zs"
     ),
     envir = environment()
@@ -931,7 +1277,9 @@ run_mcmc <- function(
         adapt_start = adapt_start,
         adapt_end = adapt_end,
         adapt_interval = adapt_interval,
-        target_accept = target_accept
+        target_accept = target_accept,
+        mark_time_rescaling = mark_time_rescaling,
+        theta_max = theta_max
       )
     }
   )
@@ -962,7 +1310,9 @@ run_mcmc <- function(
       n_chains = n_chains,
       n_iter = n_iter,
       seed = seed,
-      scale_time = scale_time
+      scale_time = scale_time,
+      mark_time_rescaling = mark_time_rescaling,
+      theta_max = theta_max
     ),
     prior_params = prior_params,
     proposal_sds = proposal_sds,
@@ -993,7 +1343,9 @@ default_prior_params <- function() {
     mu_beta = 0,
     sd_beta = 1,
     a_gamma = 1,
-    b_gamma = 1
+    b_gamma = 1,
+    mu_kappa = 0,
+    sd_kappa = 1
   )
 }
 
@@ -1008,7 +1360,7 @@ default_prior_params <- function() {
 #' @keywords internal
 #' @export
 default_proposal_sds <- function() {
-  list(theta_k = 1, v_k = 1, beta = 0.2)
+  list(theta_k = 1, v_k = 1, beta = 0.2, kappa = 0.2)
 }
 
 #' Transform posterior samples back to the original time scale
@@ -1069,6 +1421,14 @@ unscale_chain <- function(chain, time_scale) {
 #' @param title Logical; whether to put an auto generated title
 #' @param legend Logical; whether to display the plot legend.
 #' @param seed Integer or \code{NULL}; seed for posterior-draw subsampling.
+#' @param mark Numeric scalar or \code{NULL}. If \code{NULL} (default) the
+#'   normalised kernel f(x) is plotted. If numeric, the kernel is multiplied
+#'   by the mark productivity eta(mark) evaluated per posterior draw.
+#' @param mark_productivity Character; \code{"exponential"} (eta = A exp(beta m))
+#'   or \code{"linear"} (eta = A m). Only used when \code{mark} is not \code{NULL}.
+#' @param mark_time_rescaling Logical; if \code{TRUE} (requires \code{mark}),
+#'   time is rescaled by exp(-kappa * mark) using the posterior draws of
+#'   \code{kappa}.
 #'
 #' @return Invisibly returns a list containing \code{x_grid},
 #'   \code{kernel_draws}, \code{kernel_mean}, \code{kernel_lower}, and
@@ -1094,11 +1454,15 @@ plot_hawkes_kernel <- function(
   panel = c("both", "summary", "spaghetti"),
   title = TRUE,
   legend = TRUE,
-  seed = NULL
+  seed = NULL,
+  mark = NULL,
+  mark_productivity = c("exponential", "linear"),
+  mark_time_rescaling = FALSE
 ) {
   kernel <- match.arg(kernel)
   stat <- match.arg(stat)
   panel <- match.arg(panel)
+  mark_productivity <- match.arg(mark_productivity)
 
   # ---- assemble posterior draws into a single matrix -----------------------
   if (is.matrix(chains)) {
@@ -1128,6 +1492,32 @@ plot_hawkes_kernel <- function(
   V <- samples[, v_cols, drop = FALSE] # n_draws x (K-1)
   A <- samples[, "A"] # n_draws
   n_draws <- nrow(samples)
+  
+  if (mark_time_rescaling && is.null(mark)) {
+    stop("`mark_time_rescaling = TRUE` requires a numeric `mark`.")
+  }
+  if (!is.null(mark)) {
+    if (!is.numeric(mark) || length(mark) != 1) {
+      stop("`mark` must be NULL or a single numeric value.")
+    }
+    need <- c("A", if (mark_productivity == "exponential") "beta",
+              if (mark_time_rescaling) "kappa")
+    missing_cols <- setdiff(need, colnames(samples))
+    if (length(missing_cols) > 0) {
+      stop("Samples matrix is missing column(s): ",
+           paste(missing_cols, collapse = ", "))
+    }
+    eta <- if (mark_productivity == "exponential") {
+      samples[, "A"] * exp(samples[, "beta"] * mark)
+    } else {
+      samples[, "A"] * mark
+    }
+  } else {
+    eta <- rep(1, n_draws)
+  }
+  
+  # per-draw time scale s_i = exp(-kappa_i * m) 
+  psi <- if (mark_time_rescaling) exp(samples[, "kappa"] * mark) else rep(1, n_draws)
 
   # ---- stick-breaking weights + kernel normalisation, vectorised over draws -
   one_minus_v <- 1 - V
@@ -1184,7 +1574,7 @@ plot_hawkes_kernel <- function(
           function(x) tail_mass(x) - tail_tol,
           interval = c(0, max(theta_i)),
           tol = 1e-8
-        )$root
+        )$root * psi[i]
       }
 
       # Use a high posterior quantile so that the plotting range
@@ -1197,13 +1587,13 @@ plot_hawkes_kernel <- function(
   # ---- evaluate the kernel at each grid point ------------------------------
   kernel_draws <- matrix(0, n_draws, length(x_grid))
   for (j in seq_along(x_grid)) {
-    xj <- x_grid[j]
+    xj <- x_grid[j] / psi
     if (kernel == "step") {
       basis <- (Theta > xj) * 1
     } else {
       basis <- pmax(Theta - xj, 0)
     }
-    kernel_draws[, j] <- rowSums(W * basis)
+    kernel_draws[, j] <- eta / psi * rowSums(W * basis)
   }
 
   # ---- posterior summaries ---------------------------------------------------
@@ -1243,7 +1633,7 @@ plot_hawkes_kernel <- function(
       ylim = y_lim,
       xlab = "x",
       ylab = "f(x)",
-      main = if (title) {
+      main = if (title & is.null(mark)) {
         paste0(
           "Posterior kernel (",
           kernel,
@@ -1251,6 +1641,8 @@ plot_hawkes_kernel <- function(
           round(ci_level * 100),
           "% CI"
         )
+      } else if (title & !is.null(mark)) {
+        paste0("m = ", mark)
       } else {
         NULL
       }
@@ -1672,6 +2064,9 @@ plot_hawkes_resid_qq <- function(
 #' @param mark_productivity Productivity law: \code{"linear"} or \code{"exponential"}.
 #' @param burn_in Proportion of MCMC iterations to discard (0 to 1).
 #' @param max_eval_samples Maximum number of posterior draws to evaluate.
+#' @param mark_time_rescaling Logical; if \code{TRUE}, the kernel of event j is
+#'  rescaled as (1/psi_j) f(t/psi_j) with psi_j = exp(kappa * marks[j]), using
+#'  the \code{kappa} column of \code{samples}.
 #'
 #' @return List containing \code{waic} object, \code{loo} object, and the raw \code{log_lik_matrix}.
 #' @export
@@ -1683,10 +2078,15 @@ compute_hawkes_metrics <- function(
   kernel = c("step", "pwlin"),
   mark_productivity = c("linear", "exponential"),
   burn_in = 0.5,
-  max_eval_samples = 1000
+  max_eval_samples = 1000,
+  mark_time_rescaling = FALSE
 ) {
   kernel <- match.arg(kernel)
   mark_productivity <- match.arg(mark_productivity)
+  
+  if (mark_time_rescaling && !"kappa" %in% colnames(samples)) {
+    stop("`mark_time_rescaling = TRUE` but `samples` has no `kappa` column.")
+  }
 
   # 1. Process and thin the posterior chain for speed
   n_iter <- nrow(samples)
@@ -1739,6 +2139,14 @@ compute_hawkes_metrics <- function(
       beta <- draw["beta"]
       eta <- A * exp(beta * marks)
     }
+    
+    if (mark_time_rescaling) {
+      psi <- exp(draw["kappa"] * marks)            
+      dt_use <- dt_mat / rep(psi, each = n)        
+    } else {
+      psi <- rep(1, n)
+      dt_use <- dt_mat
+    }
 
     f_mat <- matrix(0, nrow = n, ncol = n)
 
@@ -1746,20 +2154,20 @@ compute_hawkes_metrics <- function(
       for (k in 1:K) {
         # Strictly past events (dt_mat > 0) AND within the step horizon
         f_mat <- f_mat +
-          (w[k] * (dt_mat > 0 & dt_mat < theta_vals[k])) / C_const
+          (w[k] * (dt_use > 0 & dt_use < theta_vals[k])) / C_const
       }
     } else if (kernel == "pwlin") {
       for (k in 1:K) {
-        diff_val <- theta_vals[k] - dt_mat
+        diff_val <- theta_vals[k] - dt_use
         # Enforce causality (dt_mat > 0) AND truncate negative decay
         # Any future step or expired step is flattened to 0 in one line
-        diff_val[dt_mat <= 0 | diff_val < 0] <- 0
+        diff_val[dt_use <= 0 | diff_val < 0] <- 0
 
         f_mat <- f_mat + (w[k] * diff_val) / C_const
       }
     }
 
-    trigger_intensities <- as.vector(f_mat %*% eta)
+    trigger_intensities <- as.vector(f_mat %*% (eta / psi))
     lambda_i <- l0 + trigger_intensities
 
     log_lik_matrix[s_idx, ] <- log(lambda_i) - ((l0 * T_max) / n) - eta

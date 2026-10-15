@@ -15,7 +15,8 @@ mhp_intensity(
   w,
   C,
   kernel = c("step", "pwlin"),
-  mark_productivity = c("linear", "exponential")
+  mark_productivity = c("linear", "exponential"),
+  kappa = NULL
 )
 }
 \arguments{
@@ -42,6 +43,11 @@ Ignored for \code{"linear"} productivity.}
 
 \item{mark_productivity}{Character; mark-productivity form,
 \code{"linear"} or \code{"exponential"}.}
+
+\item{kappa}{Numeric scalar or \code{NULL}; mark-dependent time-rescaling
+parameter. If supplied, the time scale for an event with mark \(m\) is
+\eqn{\psi(m) = \exp(\kappa m)}. If \code{NULL}, no mark-dependent time
+rescaling is applied.}
 }
 \value{
 Numeric scalar; conditional ground intensity at \code{t}.

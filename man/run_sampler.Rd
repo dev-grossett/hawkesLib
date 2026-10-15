@@ -19,7 +19,9 @@ run_sampler(
   adapt_start = 1,
   adapt_end = floor(n_iter/2),
   adapt_interval = 100,
-  target_accept = 0.3
+  target_accept = 0.3,
+  mark_time_rescaling = FALSE,
+  theta_max = NULL
 )
 }
 \arguments{
@@ -56,6 +58,12 @@ returned by \code{\link{default_proposal_sds}}.}
 \item{adapt_interval}{Integer; number of iterations between adaptations.}
 
 \item{target_accept}{Numeric; target Metropolis acceptance rate.}
+
+\item{mark_time_rescaling}{whether to enable mark-dependent temporal
+rescaling of the excitation kernel. Default \code{FALSE}.}
+
+\item{theta_max}{Numeric; if not NULL then is the end of the finite support of the
+Hawkes kernel, \eqn{[0, \theta_{max}]}}
 }
 \value{
 List containing:

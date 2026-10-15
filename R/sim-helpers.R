@@ -22,7 +22,10 @@
 #' @param kernel Character; kernel type, \code{"step"} or \code{"pwlin"}.
 #' @param mark_productivity Character; mark-productivity form,
 #'   \code{"linear"} or \code{"exponential"}.
-#'
+#' @param kappa Numeric scalar or \code{NULL}; mark-dependent time-rescaling
+#'   parameter. If supplied, the time scale for an event with mark \(m\) is
+#'   \eqn{\psi(m) = \exp(\kappa m)}. If \code{NULL}, no mark-dependent time
+#'   rescaling is applied.
 #' @return Numeric scalar; conditional ground intensity at \code{t}.
 #'
 #' @export
@@ -37,7 +40,8 @@ mhp_intensity <- function(
   w,
   C,
   kernel = c("step", "pwlin"),
-  mark_productivity = c("linear", "exponential")
+  mark_productivity = c("linear", "exponential"),
+  kappa = NULL
 ) {
   kernel <- match.arg(kernel)
   mark_productivity <- match.arg(mark_productivity)
@@ -45,15 +49,23 @@ mhp_intensity <- function(
   if (length(times) == 0) {
     return(lambda0)
   }
-
+  
+  # Optional mark time rescaling modelling extension
+  if (is.null(kappa)) {
+    psi <- rep(1, length(times))
+  } else {
+    psi <- exp(kappa * marks)
+  }
+  
   dt <- t - times # all > 0, since sim_mhp() only ever passes accepted history
+  dt_scaled <- dt / psi
 
   if (kernel == "step") {
-    basis <- outer(dt, theta, function(d, th) as.numeric(d < th))
+    basis <- outer(dt_scaled, theta, function(d, th) as.numeric(d < th))
   } else {
-    basis <- outer(dt, theta, function(d, th) pmax(th - d, 0))
+    basis <- outer(dt_scaled, theta, function(d, th) pmax(th - d, 0))
   }
-  f_vals <- as.numeric(basis %*% w) / C # f(dt_j) for each past event j
+  f_vals <- as.numeric(basis %*% w) / (C * psi) 
 
   if (mark_productivity == "linear") {
     lambda0 + A * sum(marks * f_vals)
@@ -122,7 +134,8 @@ simulate_mhp <- function(
     w = w,
     C = C,
     kernel = kernel,
-    mark_productivity = mark_productivity
+    mark_productivity = mark_productivity,
+    kappa = params$kappa
   )
 }
 
@@ -183,6 +196,7 @@ true_kernel_fn <- function(params, kernel = c("step", "pwlin")) {
 #' @param proposal_sds List of proposal standard deviations passed to
 #'   \code{\link{run_mcmc}}.
 #' @param progress Logical; whether to display MCMC progress.
+#' @param ... Additional arguments passed to \code{run_mcmc}.
 #'
 #' @return A list containing the simulated data in \code{$sim} and the fitted
 #'   model in \code{$fit}.
@@ -200,7 +214,8 @@ run_mhp_replicate <- function(
   sim_seed = NULL,
   prior_params = default_prior_params(),
   proposal_sds = default_proposal_sds(),
-  progress = FALSE
+  progress = FALSE,
+  ...
 ) {
   kernel <- match.arg(kernel)
   mark_productivity <- match.arg(mark_productivity)
@@ -227,7 +242,9 @@ run_mhp_replicate <- function(
     seed = fit_seed,
     prior_params = prior_params,
     proposal_sds = proposal_sds,
-    progress = progress
+    progress = progress,
+    mark_time_rescaling = if (is.null(true_params$kappa)) FALSE else TRUE,
+    ...
   )
 
   list(sim = sim, fit = fit)
@@ -260,6 +277,7 @@ run_mhp_replicate <- function(
 #' @param ci_level Numeric in \code{(0, 1)}; credible interval level.
 #' @param progress Logical; whether to display MCMC progress.
 #' @param verbose Logical; whether to print replicate progress.
+#' @param ... Additional arguments passed to \code{run_mcmc}.
 #'
 #' @return A list containing:
 #'   \describe{
@@ -290,15 +308,24 @@ run_simulation_study <- function(
   proposal_sds = default_proposal_sds(),
   ci_level = 0.95,
   progress = FALSE,
-  verbose = TRUE
+  verbose = TRUE,
+  ...
 ) {
   kernel <- match.arg(kernel)
   mark_productivity <- match.arg(mark_productivity)
 
   if (mark_productivity == "linear") {
-    scalar_names <- c("lambda0", "A", "gamma")
-  } else if (mark_productivity == "exponential") {
-    scalar_names <- c("lambda0", "A", "beta", "gamma")
+    if (is.null(true_params$kappa)) {
+      scalar_names <- c("lambda0", "A", "gamma")
+    } else {
+      scalar_names <- c("lambda0", "A", "kappa", "gamma")
+    }
+  } else {
+    if (is.null(true_params$kappa)) {
+      scalar_names <- c("lambda0", "A", "beta", "gamma")
+    } else {
+      scalar_names <- c("lambda0", "A", "beta", "kappa", "gamma")
+    } 
   }
   true_vals <- unlist(true_params[scalar_names])
   tail_p <- (1 - ci_level) / 2
@@ -323,7 +350,8 @@ run_simulation_study <- function(
         sim_seed = base_seed + r,
         prior_params = prior_params,
         proposal_sds = proposal_sds,
-        progress = progress
+        progress = progress,
+        ...
       ),
       error = function(e) {
         warning(sprintf("Replicate %d failed: %s", r, conditionMessage(e)))

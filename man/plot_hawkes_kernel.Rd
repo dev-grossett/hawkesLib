@@ -17,7 +17,10 @@ plot_hawkes_kernel(
   panel = c("both", "summary", "spaghetti"),
   title = TRUE,
   legend = TRUE,
-  seed = NULL
+  seed = NULL,
+  mark = NULL,
+  mark_productivity = c("exponential", "linear"),
+  mark_time_rescaling = FALSE
 )
 }
 \arguments{
@@ -52,6 +55,17 @@ overlay.}
 \item{legend}{Logical; whether to display the plot legend.}
 
 \item{seed}{Integer or \code{NULL}; seed for posterior-draw subsampling.}
+
+\item{mark}{Numeric scalar or \code{NULL}. If \code{NULL} (default) the
+normalised kernel f(x) is plotted. If numeric, the kernel is multiplied
+by the mark productivity eta(mark) evaluated per posterior draw.}
+
+\item{mark_productivity}{Character; \code{"exponential"} (eta = A exp(beta m))
+or \code{"linear"} (eta = A m). Only used when \code{mark} is not \code{NULL}.}
+
+\item{mark_time_rescaling}{Logical; if \code{TRUE} (requires \code{mark}),
+time is rescaled by exp(-kappa * mark) using the posterior draws of
+\code{kappa}.}
 }
 \value{
 Invisibly returns a list containing \code{x_grid},
