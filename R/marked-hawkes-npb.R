@@ -1172,13 +1172,18 @@ run_mcmc <- function(
         },
         v = rbeta(K - 1, 1, 1),
         alpha = runif(1, 0.5, 2),
-        phi = runif(1, 0.2, 1),
         gamma = runif(1, 0.2, 2)
       )
     })
     if (mark_time_rescaling) {
       init_list <- lapply(init_list, function(init) {
         init$kappa <- rnorm(1, prior_params$mu_kappa, prior_params$sd_kappa)
+        init
+      })
+    }
+    if (is.null(theta_max)) {
+      init_list <- lapply(init_list, function(init) {
+        init$phi <- runif(1, 0.2, 1)
         init
       })
     }
@@ -1195,13 +1200,18 @@ run_mcmc <- function(
         },
         v = rbeta(K - 1, 1, 1),
         alpha = runif(1, 0.5, 2),
-        phi = runif(1, 0.2, 1),
         gamma = runif(1, 0.2, 2)
       )
     })
     if (mark_time_rescaling) {
       init_list <- lapply(init_list, function(init) {
         init$kappa <- rnorm(1, prior_params$mu_kappa, prior_params$sd_kappa)
+        init
+      })
+    }
+    if (is.null(theta_max)) {
+      init_list <- lapply(init_list, function(init) {
+        init$phi <- runif(1, 0.2, 1)
         init
       })
     }
@@ -1411,6 +1421,14 @@ unscale_chain <- function(chain, time_scale) {
 #' @param title Logical; whether to put an auto generated title
 #' @param legend Logical; whether to display the plot legend.
 #' @param seed Integer or \code{NULL}; seed for posterior-draw subsampling.
+#' @param mark Numeric scalar or \code{NULL}. If \code{NULL} (default) the
+#'   normalised kernel f(x) is plotted. If numeric, the kernel is multiplied
+#'   by the mark productivity eta(mark) evaluated per posterior draw.
+#' @param mark_productivity Character; \code{"exponential"} (eta = A exp(beta m))
+#'   or \code{"linear"} (eta = A m). Only used when \code{mark} is not \code{NULL}.
+#' @param mark_time_rescaling Logical; if \code{TRUE} (requires \code{mark}),
+#'   time is rescaled by exp(-kappa * mark) using the posterior draws of
+#'   \code{kappa}.
 #'
 #' @return Invisibly returns a list containing \code{x_grid},
 #'   \code{kernel_draws}, \code{kernel_mean}, \code{kernel_lower}, and
@@ -1436,11 +1454,15 @@ plot_hawkes_kernel <- function(
   panel = c("both", "summary", "spaghetti"),
   title = TRUE,
   legend = TRUE,
-  seed = NULL
+  seed = NULL,
+  mark = NULL,
+  mark_productivity = c("exponential", "linear"),
+  mark_time_rescaling = FALSE
 ) {
   kernel <- match.arg(kernel)
   stat <- match.arg(stat)
   panel <- match.arg(panel)
+  mark_productivity <- match.arg(mark_productivity)
 
   # ---- assemble posterior draws into a single matrix -----------------------
   if (is.matrix(chains)) {
@@ -1470,6 +1492,32 @@ plot_hawkes_kernel <- function(
   V <- samples[, v_cols, drop = FALSE] # n_draws x (K-1)
   A <- samples[, "A"] # n_draws
   n_draws <- nrow(samples)
+  
+  if (mark_time_rescaling && is.null(mark)) {
+    stop("`mark_time_rescaling = TRUE` requires a numeric `mark`.")
+  }
+  if (!is.null(mark)) {
+    if (!is.numeric(mark) || length(mark) != 1) {
+      stop("`mark` must be NULL or a single numeric value.")
+    }
+    need <- c("A", if (mark_productivity == "exponential") "beta",
+              if (mark_time_rescaling) "kappa")
+    missing_cols <- setdiff(need, colnames(samples))
+    if (length(missing_cols) > 0) {
+      stop("Samples matrix is missing column(s): ",
+           paste(missing_cols, collapse = ", "))
+    }
+    eta <- if (mark_productivity == "exponential") {
+      samples[, "A"] * exp(samples[, "beta"] * mark)
+    } else {
+      samples[, "A"] * mark
+    }
+  } else {
+    eta <- rep(1, n_draws)
+  }
+  
+  # per-draw time scale s_i = exp(-kappa_i * m) 
+  psi <- if (mark_time_rescaling) exp(samples[, "kappa"] * mark) else rep(1, n_draws)
 
   # ---- stick-breaking weights + kernel normalisation, vectorised over draws -
   one_minus_v <- 1 - V
@@ -1526,7 +1574,7 @@ plot_hawkes_kernel <- function(
           function(x) tail_mass(x) - tail_tol,
           interval = c(0, max(theta_i)),
           tol = 1e-8
-        )$root
+        )$root * psi[i]
       }
 
       # Use a high posterior quantile so that the plotting range
@@ -1539,13 +1587,13 @@ plot_hawkes_kernel <- function(
   # ---- evaluate the kernel at each grid point ------------------------------
   kernel_draws <- matrix(0, n_draws, length(x_grid))
   for (j in seq_along(x_grid)) {
-    xj <- x_grid[j]
+    xj <- x_grid[j] / psi
     if (kernel == "step") {
       basis <- (Theta > xj) * 1
     } else {
       basis <- pmax(Theta - xj, 0)
     }
-    kernel_draws[, j] <- rowSums(W * basis)
+    kernel_draws[, j] <- eta / psi * rowSums(W * basis)
   }
 
   # ---- posterior summaries ---------------------------------------------------
@@ -1585,7 +1633,7 @@ plot_hawkes_kernel <- function(
       ylim = y_lim,
       xlab = "x",
       ylab = "f(x)",
-      main = if (title) {
+      main = if (title & is.null(mark)) {
         paste0(
           "Posterior kernel (",
           kernel,
@@ -1593,6 +1641,8 @@ plot_hawkes_kernel <- function(
           round(ci_level * 100),
           "% CI"
         )
+      } else if (title & !is.null(mark)) {
+        paste0("m = ", mark)
       } else {
         NULL
       }
@@ -2014,6 +2064,9 @@ plot_hawkes_resid_qq <- function(
 #' @param mark_productivity Productivity law: \code{"linear"} or \code{"exponential"}.
 #' @param burn_in Proportion of MCMC iterations to discard (0 to 1).
 #' @param max_eval_samples Maximum number of posterior draws to evaluate.
+#' @param mark_time_rescaling Logical; if \code{TRUE}, the kernel of event j is
+#'  rescaled as (1/psi_j) f(t/psi_j) with psi_j = exp(kappa * marks[j]), using
+#'  the \code{kappa} column of \code{samples}.
 #'
 #' @return List containing \code{waic} object, \code{loo} object, and the raw \code{log_lik_matrix}.
 #' @export
@@ -2025,10 +2078,15 @@ compute_hawkes_metrics <- function(
   kernel = c("step", "pwlin"),
   mark_productivity = c("linear", "exponential"),
   burn_in = 0.5,
-  max_eval_samples = 1000
+  max_eval_samples = 1000,
+  mark_time_rescaling = FALSE
 ) {
   kernel <- match.arg(kernel)
   mark_productivity <- match.arg(mark_productivity)
+  
+  if (mark_time_rescaling && !"kappa" %in% colnames(samples)) {
+    stop("`mark_time_rescaling = TRUE` but `samples` has no `kappa` column.")
+  }
 
   # 1. Process and thin the posterior chain for speed
   n_iter <- nrow(samples)
@@ -2081,6 +2139,14 @@ compute_hawkes_metrics <- function(
       beta <- draw["beta"]
       eta <- A * exp(beta * marks)
     }
+    
+    if (mark_time_rescaling) {
+      psi <- exp(draw["kappa"] * marks)            
+      dt_use <- dt_mat / rep(psi, each = n)        
+    } else {
+      psi <- rep(1, n)
+      dt_use <- dt_mat
+    }
 
     f_mat <- matrix(0, nrow = n, ncol = n)
 
@@ -2088,20 +2154,20 @@ compute_hawkes_metrics <- function(
       for (k in 1:K) {
         # Strictly past events (dt_mat > 0) AND within the step horizon
         f_mat <- f_mat +
-          (w[k] * (dt_mat > 0 & dt_mat < theta_vals[k])) / C_const
+          (w[k] * (dt_use > 0 & dt_use < theta_vals[k])) / C_const
       }
     } else if (kernel == "pwlin") {
       for (k in 1:K) {
-        diff_val <- theta_vals[k] - dt_mat
+        diff_val <- theta_vals[k] - dt_use
         # Enforce causality (dt_mat > 0) AND truncate negative decay
         # Any future step or expired step is flattened to 0 in one line
-        diff_val[dt_mat <= 0 | diff_val < 0] <- 0
+        diff_val[dt_use <= 0 | diff_val < 0] <- 0
 
         f_mat <- f_mat + (w[k] * diff_val) / C_const
       }
     }
 
-    trigger_intensities <- as.vector(f_mat %*% eta)
+    trigger_intensities <- as.vector(f_mat %*% (eta / psi))
     lambda_i <- l0 + trigger_intensities
 
     log_lik_matrix[s_idx, ] <- log(lambda_i) - ((l0 * T_max) / n) - eta
